@@ -1,5 +1,5 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test";
-import { startServer, MAX_PHOTOS, generateQRCodeSVG } from "./server";
+import { startServer, MAX_PHOTOS, generateQRCodeSVG, getLandingHTML } from "./server";
 
 describe("Live Photo Slideshow Server", () => {
   let server: ReturnType<typeof startServer>;
@@ -68,6 +68,13 @@ describe("Live Photo Slideshow Server", () => {
       expect(landingHtml).toMatch(/id=["'](?:photo-count|buffered-count|photo-badge)["']/i);
       expect(landingHtml).toContain("/ws");
       expect(landingHtml).toMatch(/WebSocket/);
+    });
+
+    it("sanitizes host parameter to prevent XSS / attribute breakout", () => {
+      const html = getLandingHTML('evil.com"><script>alert(1)</script>');
+      expect(html).not.toContain("<script>alert(1)</script>");
+      expect(html).not.toContain('evil.com"');
+      expect(html).toContain("http://evil.comscriptalert1script/camera");
     });
   });
 

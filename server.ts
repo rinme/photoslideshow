@@ -211,7 +211,7 @@ export function generateQRCodeSVG(text: string): string {
     pushBits(b, 8);
   }
   const maxBits = config.dataCodewords * 8;
-  const termLen = Math.min(4, maxBits - bits.length);
+  const termLen = Math.max(0, Math.min(4, maxBits - bits.length));
   pushBits(0, termLen);
   while (bits.length % 8 !== 0) bits.push(0);
 
@@ -354,28 +354,32 @@ export function generateQRCodeSVG(text: string): string {
     }
   }
 
+  // 8. Format bits (Level L, Mask 0): 15-bit format sequence
+  // In formatStr, formatStr[0] is Bit 14 (MSB) and formatStr[14] is Bit 0 (LSB).
   const formatStr = "111011111000100";
+  function getFormatBit(bitIndex: number): number {
+    return parseInt(formatStr[14 - bitIndex], 10);
+  }
+
+  // Primary copy around top-left (ISO/IEC 18004 Table 10)
+  // [8,0]=bit 0, [8,1]=bit 1, ..., [0,8]=bit 14
   const tlCoords: [number, number][] = [
     [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5],
     [8, 7], [8, 8], [7, 8], [5, 8], [4, 8], [3, 8],
     [2, 8], [1, 8], [0, 8]
   ];
   for (let i = 0; i < 15; i++) {
-    matrix[tlCoords[i][0]][tlCoords[i][1]] = parseInt(formatStr[14 - i], 10);
+    matrix[tlCoords[i][0]][tlCoords[i][1]] = getFormatBit(i);
   }
-  const trCoords: [number, number][] = [
-    [8, size - 1], [8, size - 2], [8, size - 3], [8, size - 4],
-    [8, size - 5], [8, size - 6], [8, size - 7], [8, size - 8]
-  ];
+
+  // Secondary copy (ISO/IEC 18004 Table 10):
+  // Top-right: [8, size-1]=bit 0, [8, size-2]=bit 1, ..., [8, size-8]=bit 7
   for (let i = 0; i < 8; i++) {
-    matrix[trCoords[i][0]][trCoords[i][1]] = parseInt(formatStr[14 - i], 10);
+    matrix[8][size - 1 - i] = getFormatBit(i);
   }
-  const blCoords: [number, number][] = [
-    [size - 7, 8], [size - 6, 8], [size - 5, 8], [size - 4, 8],
-    [size - 3, 8], [size - 2, 8], [size - 1, 8]
-  ];
+  // Bottom-left: [size-7, 8]=bit 8, [size-6, 8]=bit 9, ..., [size-1, 8]=bit 14
   for (let i = 0; i < 7; i++) {
-    matrix[blCoords[i][0]][blCoords[i][1]] = parseInt(formatStr[6 - i], 10);
+    matrix[size - 7 + i][8] = getFormatBit(8 + i);
   }
 
   const margin = 4;
@@ -392,7 +396,7 @@ export function generateQRCodeSVG(text: string): string {
 }
 
 export function getLandingHTML(host: string): string {
-  const cleanHost = host || "localhost:3000";
+  const cleanHost = (host || "localhost:3000").replace(/[^a-zA-Z0-9.:\[\]-]/g, "") || "localhost:3000";
   const targetUrl = `http://${cleanHost}/camera`;
   const qrSvg = generateQRCodeSVG(targetUrl);
 
