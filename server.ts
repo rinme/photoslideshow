@@ -119,9 +119,471 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
   return server;
 }
 
-// Stubs for HTML views (detailed in subsequent tasks)
+// ==========================================
+// Zero-Dependency QR Code Generator (SVG)
+// ==========================================
+
+const QR_EXP = new Uint8Array(512);
+const QR_LOG = new Uint8Array(256);
+for (let i = 0, x = 1; i < 255; i++) {
+  QR_EXP[i] = x;
+  QR_EXP[i + 255] = x;
+  QR_LOG[x] = i;
+  x = (x << 1) ^ (x & 128 ? 0x11d : 0);
+}
+
+function qrMultiply(p1: number[], p2: number[]): number[] {
+  const res = new Array(p1.length + p2.length - 1).fill(0);
+  for (let i = 0; i < p1.length; i++) {
+    for (let j = 0; j < p2.length; j++) {
+      if (p1[i] !== 0 && p2[j] !== 0) {
+        res[i + j] ^= QR_EXP[QR_LOG[p1[i]] + QR_LOG[p2[j]]];
+      }
+    }
+  }
+  return res;
+}
+
+function qrGeneratorPoly(degree: number): number[] {
+  let g = [1];
+  for (let i = 0; i < degree; i++) {
+    g = qrMultiply(g, [1, QR_EXP[i]]);
+  }
+  return g;
+}
+
+function qrCalculateEC(data: number[], ecCount: number): number[] {
+  const g = qrGeneratorPoly(ecCount);
+  const msg = [...data, ...new Array(ecCount).fill(0)];
+  for (let i = 0; i < data.length; i++) {
+    const coef = msg[i];
+    if (coef !== 0) {
+      for (let j = 0; j < g.length; j++) {
+        msg[i + j] ^= QR_EXP[(QR_LOG[coef] + QR_LOG[g[j]]) % 255];
+      }
+    }
+  }
+  return msg.slice(data.length);
+}
+
+interface QRVersionConfig {
+  version: number;
+  size: number;
+  dataCodewords: number;
+  ecCodewords: number;
+  blocks: number;
+  align: number[];
+}
+
+const QR_VERSIONS: (QRVersionConfig | null)[] = [
+  null,
+  { version: 1, size: 21, dataCodewords: 19, ecCodewords: 7, blocks: 1, align: [] },
+  { version: 2, size: 25, dataCodewords: 34, ecCodewords: 10, blocks: 1, align: [6, 18] },
+  { version: 3, size: 29, dataCodewords: 55, ecCodewords: 15, blocks: 1, align: [6, 22] },
+  { version: 4, size: 33, dataCodewords: 80, ecCodewords: 20, blocks: 1, align: [6, 26] },
+  { version: 5, size: 37, dataCodewords: 108, ecCodewords: 26, blocks: 1, align: [6, 30] },
+  { version: 6, size: 41, dataCodewords: 136, ecCodewords: 18, blocks: 2, align: [6, 34] },
+];
+
+export function generateQRCodeSVG(text: string): string {
+  const textBytes = new TextEncoder().encode(text);
+  let config: QRVersionConfig | null = null;
+  for (let v = 1; v < QR_VERSIONS.length; v++) {
+    const candidate = QR_VERSIONS[v]!;
+    if (textBytes.length <= candidate.dataCodewords - 2) {
+      config = candidate;
+      break;
+    }
+  }
+  if (!config) {
+    config = QR_VERSIONS[QR_VERSIONS.length - 1]!;
+  }
+
+  const bits: number[] = [];
+  function pushBits(val: number, len: number) {
+    for (let i = len - 1; i >= 0; i--) {
+      bits.push((val >> i) & 1);
+    }
+  }
+  pushBits(0b0100, 4); // Byte mode
+  pushBits(textBytes.length, 8); // 8-bit length for versions 1-9
+  for (const b of textBytes) {
+    pushBits(b, 8);
+  }
+  const maxBits = config.dataCodewords * 8;
+  const termLen = Math.min(4, maxBits - bits.length);
+  pushBits(0, termLen);
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const dataBytes: number[] = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    dataBytes.push(b);
+  }
+  const pad = [0xec, 0x11];
+  let padIdx = 0;
+  while (dataBytes.length < config.dataCodewords) {
+    dataBytes.push(pad[padIdx++ % 2]);
+  }
+
+  let finalCodewords: number[] = [];
+  if (config.blocks === 1) {
+    const ec = qrCalculateEC(dataBytes, config.ecCodewords);
+    finalCodewords = [...dataBytes, ...ec];
+  } else {
+    const blockSize = dataBytes.length / config.blocks;
+    const block1 = dataBytes.slice(0, blockSize);
+    const block2 = dataBytes.slice(blockSize);
+    const ec1 = qrCalculateEC(block1, config.ecCodewords);
+    const ec2 = qrCalculateEC(block2, config.ecCodewords);
+    for (let i = 0; i < blockSize; i++) {
+      finalCodewords.push(block1[i], block2[i]);
+    }
+    for (let i = 0; i < config.ecCodewords; i++) {
+      finalCodewords.push(ec1[i], ec2[i]);
+    }
+  }
+
+  const size = config.size;
+  const matrix: number[][] = Array.from({ length: size }, () => new Array(size).fill(0));
+  const isReserved: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
+
+  function addFinder(r0: number, c0: number) {
+    for (let r = 0; r < 7; r++) {
+      for (let c = 0; c < 7; c++) {
+        const isBorder = r === 0 || r === 6 || c === 0 || c === 6;
+        const isCenter = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+        matrix[r0 + r][c0 + c] = isBorder || isCenter ? 1 : 0;
+        isReserved[r0 + r][c0 + c] = true;
+      }
+    }
+    for (let r = -1; r <= 7; r++) {
+      for (let c = -1; c <= 7; c++) {
+        if (r === -1 || r === 7 || c === -1 || c === 7) {
+          const rr = r0 + r;
+          const cc = c0 + c;
+          if (rr >= 0 && rr < size && cc >= 0 && cc < size) {
+            matrix[rr][cc] = 0;
+            isReserved[rr][cc] = true;
+          }
+        }
+      }
+    }
+  }
+  addFinder(0, 0);
+  addFinder(0, size - 7);
+  addFinder(size - 7, 0);
+
+  if (config.align.length > 0) {
+    for (const r of config.align) {
+      for (const c of config.align) {
+        if (isReserved[r][c]) continue;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const isBorder = Math.abs(dr) === 2 || Math.abs(dc) === 2;
+            const isCenter = dr === 0 && dc === 0;
+            matrix[r + dr][c + dc] = isBorder || isCenter ? 1 : 0;
+            isReserved[r + dr][c + dc] = true;
+          }
+        }
+      }
+    }
+  }
+
+  for (let i = 8; i < size - 8; i++) {
+    if (!isReserved[6][i]) {
+      matrix[6][i] = i % 2 === 0 ? 1 : 0;
+      isReserved[6][i] = true;
+    }
+    if (!isReserved[i][6]) {
+      matrix[i][6] = i % 2 === 0 ? 1 : 0;
+      isReserved[i][6] = true;
+    }
+  }
+
+  matrix[size - 8][8] = 1;
+  isReserved[size - 8][8] = true;
+
+  for (let i = 0; i < 9; i++) {
+    isReserved[8][i] = true;
+    isReserved[i][8] = true;
+  }
+  for (let i = 0; i < 8; i++) {
+    isReserved[8][size - 1 - i] = true;
+    isReserved[size - 1 - i][8] = true;
+  }
+
+  const bitStream: number[] = [];
+  for (const byte of finalCodewords) {
+    for (let i = 7; i >= 0; i--) {
+      bitStream.push((byte >> i) & 1);
+    }
+  }
+  const remainderBits = [0, 0, 7, 7, 7, 7, 7][config.version] || 0;
+  for (let i = 0; i < remainderBits; i++) bitStream.push(0);
+
+  let bitIdx = 0;
+  let upward = true;
+  for (let right = size - 1; right > 0; right -= 2) {
+    if (right === 6) right--;
+    const left = right - 1;
+    const rows: number[] = [];
+    if (upward) {
+      for (let r = size - 1; r >= 0; r--) rows.push(r);
+    } else {
+      for (let r = 0; r < size; r++) rows.push(r);
+    }
+    for (const r of rows) {
+      for (const col of [right, left]) {
+        if (!isReserved[r][col]) {
+          matrix[r][col] = bitIdx < bitStream.length ? bitStream[bitIdx++] : 0;
+        }
+      }
+    }
+    upward = !upward;
+  }
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (!isReserved[r][c]) {
+        if ((r + c) % 2 === 0) {
+          matrix[r][c] ^= 1;
+        }
+      }
+    }
+  }
+
+  const formatStr = "111011111000100";
+  const tlCoords: [number, number][] = [
+    [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5],
+    [8, 7], [8, 8], [7, 8], [5, 8], [4, 8], [3, 8],
+    [2, 8], [1, 8], [0, 8]
+  ];
+  for (let i = 0; i < 15; i++) {
+    matrix[tlCoords[i][0]][tlCoords[i][1]] = parseInt(formatStr[14 - i], 10);
+  }
+  const trCoords: [number, number][] = [
+    [8, size - 1], [8, size - 2], [8, size - 3], [8, size - 4],
+    [8, size - 5], [8, size - 6], [8, size - 7], [8, size - 8]
+  ];
+  for (let i = 0; i < 8; i++) {
+    matrix[trCoords[i][0]][trCoords[i][1]] = parseInt(formatStr[14 - i], 10);
+  }
+  const blCoords: [number, number][] = [
+    [size - 7, 8], [size - 6, 8], [size - 5, 8], [size - 4, 8],
+    [size - 3, 8], [size - 2, 8], [size - 1, 8]
+  ];
+  for (let i = 0; i < 7; i++) {
+    matrix[blCoords[i][0]][blCoords[i][1]] = parseInt(formatStr[6 - i], 10);
+  }
+
+  const margin = 4;
+  const viewBoxSize = size + margin * 2;
+  let rects = "";
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (matrix[r][c] === 1) {
+        rects += `<rect x="${c + margin}" y="${r + margin}" width="1" height="1" fill="#000000"/>`;
+      }
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBoxSize} ${viewBoxSize}" shape-rendering="crispEdges" class="w-full h-full block rounded-lg"><rect width="${viewBoxSize}" height="${viewBoxSize}" fill="#ffffff"/>${rects}</svg>`;
+}
+
 export function getLandingHTML(host: string): string {
-  return `<!DOCTYPE html><html><head><title>Live Photo Slideshow</title></head><body>Live Photo Slideshow</body></html>`;
+  const cleanHost = host || "localhost:3000";
+  const targetUrl = `http://${cleanHost}/camera`;
+  const qrSvg = generateQRCodeSVG(targetUrl);
+
+  return `<!DOCTYPE html>
+<html lang="en" class="h-full bg-zinc-950 text-zinc-100 antialiased">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Photo Slideshow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-full flex flex-col justify-between bg-zinc-950 text-zinc-100 selection:bg-amber-500 selection:text-black">
+  <!-- Top Navigation & Live Status Badge -->
+  <header class="border-b border-zinc-900 bg-zinc-950/70 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-zinc-950 font-bold shadow-md shadow-amber-500/20">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+            <circle cx="12" cy="13" r="3"/>
+          </svg>
+        </div>
+        <h1 class="text-xl font-bold tracking-tight text-white">Live Photo Slideshow</h1>
+      </div>
+
+      <!-- Live Status Badge -->
+      <div id="live-status-badge" class="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-medium">
+        <span id="status-dot" class="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
+        <span id="connection-status" class="text-zinc-300">Connecting...</span>
+        <span class="text-zinc-700">|</span>
+        <span id="photo-count" class="text-amber-400 font-mono">0 photos</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-4xl mx-auto px-6 py-8 md:py-12 flex-1 w-full flex flex-col justify-center">
+    <div class="text-center max-w-xl mx-auto mb-10">
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white mb-3">
+        Scan &amp; Stream Photos Live
+      </h2>
+      <p class="text-zinc-400 text-base sm:text-lg">
+        Guests snap photos on their mobile phones and instantly beam them onto the big screen in real-time.
+      </p>
+    </div>
+
+    <!-- QR Code Card -->
+    <div class="flex flex-col items-center mb-12">
+      <div id="qr-container" class="relative group p-4 sm:p-5 bg-white rounded-3xl shadow-2xl shadow-amber-500/10 border border-zinc-200/20 max-w-[280px] sm:max-w-[300px] w-full aspect-square flex items-center justify-center transition-transform hover:scale-[1.02]">
+        ${qrSvg}
+      </div>
+      <div class="mt-4 text-center">
+        <p class="text-sm font-medium text-zinc-300 mb-1">Point your phone camera to join instantly</p>
+        <a href="${targetUrl}" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-mono text-amber-400 hover:text-amber-300 underline underline-offset-4 decoration-amber-500/40 hover:decoration-amber-300 transition break-all">
+          <span>${targetUrl}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Quick-Launch Navigation Action Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto w-full">
+      <!-- Camera Card -->
+      <a href="/camera" class="group relative flex flex-col justify-between p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition duration-200 shadow-lg">
+        <div class="flex items-start justify-between mb-4">
+          <div class="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-110 transition duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+              <circle cx="12" cy="13" r="3"/>
+            </svg>
+          </div>
+          <span class="text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-400 group-hover:text-amber-400 group-hover:bg-amber-500/10 transition">
+            Phone
+          </span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white group-hover:text-amber-400 transition flex items-center gap-1.5">
+            Open Camera
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </h3>
+          <p class="text-sm text-zinc-400 mt-1">Take photos from your phone with instant frames &amp; remote controls.</p>
+        </div>
+      </a>
+
+      <!-- Big Screen Display Card -->
+      <a href="/display" class="group relative flex flex-col justify-between p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition duration-200 shadow-lg">
+        <div class="flex items-start justify-between mb-4">
+          <div class="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-110 transition duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <span class="text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-400 group-hover:text-amber-400 group-hover:bg-amber-500/10 transition">
+            Display
+          </span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white group-hover:text-amber-400 transition flex items-center gap-1.5">
+            Launch Big Screen
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </h3>
+          <p class="text-sm text-zinc-400 mt-1">Open fullscreen slideshow for projectors, monitors, and TV screens.</p>
+        </div>
+      </a>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-zinc-900/80 py-4 text-center text-xs text-zinc-600">
+    <p>Live Photo Slideshow &bull; Single-file event photography system powered by Bun &amp; WebSockets</p>
+  </footer>
+
+  <!-- Real-Time Status WebSocket Script -->
+  <script>
+    (function() {
+      const statusDot = document.getElementById("status-dot");
+      const statusText = document.getElementById("connection-status");
+      const photoCount = document.getElementById("photo-count");
+
+      let ws = null;
+      let reconnectTimer = null;
+
+      function connect() {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = protocol + "//" + window.location.host + "/ws";
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = function() {
+          if (statusDot) {
+            statusDot.className = "h-2 w-2 rounded-full bg-emerald-500 animate-pulse";
+          }
+          if (statusText) {
+            statusText.textContent = "Live";
+            statusText.className = "text-emerald-400";
+          }
+        };
+
+        ws.onmessage = function(event) {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "init") {
+              const count = (data.photos && data.photos.length) || (data.state && data.state.total) || 0;
+              updateCount(count);
+            } else if (data.type === "new_photo" && typeof data.total === "number") {
+              updateCount(data.total);
+            } else if (data.type === "state" && typeof data.total === "number") {
+              updateCount(data.total);
+            }
+          } catch (e) {
+            console.error("WS message parse error:", e);
+          }
+        };
+
+        ws.onclose = function() {
+          if (statusDot) {
+            statusDot.className = "h-2 w-2 rounded-full bg-amber-500 animate-pulse";
+          }
+          if (statusText) {
+            statusText.textContent = "Reconnecting...";
+            statusText.className = "text-amber-400";
+          }
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connect, 2000);
+        };
+
+        ws.onerror = function() {
+          ws.close();
+        };
+      }
+
+      function updateCount(count) {
+        if (photoCount) {
+          photoCount.textContent = count + (count === 1 ? " photo" : " photos");
+        }
+      }
+
+      connect();
+    })();
+  </script>
+</body>
+</html>`;
 }
 
 export function getCameraHTML(): string {

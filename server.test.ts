@@ -1,5 +1,5 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test";
-import { startServer, MAX_PHOTOS } from "./server";
+import { startServer, MAX_PHOTOS, generateQRCodeSVG } from "./server";
 
 describe("Live Photo Slideshow Server", () => {
   let server: ReturnType<typeof startServer>;
@@ -21,6 +21,54 @@ describe("Live Photo Slideshow Server", () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain("Live Photo Slideshow");
+  });
+
+  describe("Landing Root View (/)", () => {
+    let landingHtml: string;
+
+    beforeAll(async () => {
+      const res = await fetch(`${httpUrl}/`);
+      landingHtml = await res.text();
+    });
+
+    it("includes mobile viewport and Tailwind CSS CDN", () => {
+      expect(landingHtml).toContain("viewport");
+      expect(landingHtml).toContain("cdn.tailwindcss.com");
+    });
+
+    it("renders dynamic inline SVG QR code container pointing to /camera target URL", () => {
+      const expectedCameraUrl = `http://${server.hostname}:${server.port}/camera`;
+      expect(landingHtml).toMatch(/id=["']qr-container["']|<div[^>]*class=[^>]*qr/i);
+      expect(landingHtml).toContain("<svg");
+      expect(landingHtml).toContain(expectedCameraUrl);
+    });
+
+    it("generates a scannable inline QR code SVG", () => {
+      const url = `http://${server.hostname}:${server.port}/camera`;
+      const svg = generateQRCodeSVG(url);
+      expect(svg).toContain("<svg");
+      expect(svg).toContain("<rect");
+      expect(svg).toContain("shape-rendering=\"crispEdges\"");
+    });
+
+    it("provides quick-launch action card for Open Camera (/camera)", () => {
+      expect(landingHtml).toMatch(/<a[^>]*href=["']\/camera["'][^>]*>/i);
+      expect(landingHtml).toContain("Open Camera");
+      expect(landingHtml).toMatch(/take photos from your phone/i);
+    });
+
+    it("provides quick-launch action card for Launch Big Screen (/display)", () => {
+      expect(landingHtml).toMatch(/<a[^>]*href=["']\/display["'][^>]*>/i);
+      expect(landingHtml).toMatch(/launch big screen|open big screen/i);
+      expect(landingHtml).toMatch(/open fullscreen slideshow/i);
+    });
+
+    it("includes live status badge and WebSocket listener for real-time photo/connection status", () => {
+      expect(landingHtml).toMatch(/id=["'](?:live-)?status-badge["']|id=["']connection-status["']/i);
+      expect(landingHtml).toMatch(/id=["'](?:photo-count|buffered-count|photo-badge)["']/i);
+      expect(landingHtml).toContain("/ws");
+      expect(landingHtml).toMatch(/WebSocket/);
+    });
   });
 
   it("serves the camera page on GET /camera", async () => {
