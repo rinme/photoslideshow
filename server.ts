@@ -608,7 +608,282 @@ export function getCameraHTML(): string {
 }
 
 export function getDisplayHTML(): string {
-  return `<!DOCTYPE html><html><head><title>Display</title></head><body>slideshow</body></html>`;
+  return `<!DOCTYPE html>
+<html lang="en" class="h-full bg-black">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Big Screen Display - Live Photo Slideshow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body.cursor-none {
+      cursor: none !important;
+    }
+    body.cursor-none * {
+      cursor: none !important;
+    }
+  </style>
+</head>
+<body class="h-full w-full bg-[#000000] text-white overflow-hidden select-none m-0 p-0 flex items-center justify-center font-sans relative">
+  <!-- Empty State Indicator -->
+  <div id="empty-state" class="flex flex-col items-center justify-center text-center p-8 z-10 select-none">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+      <span class="text-xs uppercase tracking-widest text-zinc-400 font-semibold">Live Photo Slideshow</span>
+    </div>
+    <h1 class="text-2xl md:text-3xl font-light text-zinc-200 tracking-tight mb-2">Waiting for photos...</h1>
+    <p class="text-sm md:text-base text-zinc-400 max-w-md">
+      Scan QR code on home page or visit <span class="text-amber-400 font-mono font-semibold">/camera</span> on your phone to beam the first photo.
+    </p>
+  </div>
+
+  <!-- Main Photo Container -->
+  <div id="photo-container" class="absolute inset-0 flex items-center justify-center overflow-hidden">
+    <img id="slideshow-image" src="" alt="Slideshow Photo" class="max-w-full max-h-full object-contain transition-opacity duration-700 ease-in-out select-none shadow-2xl opacity-0" />
+  </div>
+
+  <!-- Floating Bottom Controls HUD -->
+  <nav id="controls-hud" class="fixed bottom-6 inset-x-0 mx-auto w-fit z-50 bg-zinc-900/80 backdrop-blur-md border border-zinc-700/60 rounded-full px-5 py-2.5 shadow-2xl flex items-center gap-4 text-zinc-200 transition-opacity duration-300 opacity-100">
+    <button id="prev-btn" data-action="prev" title="Previous (Left Arrow)" class="hover:text-amber-400 active:scale-90 transition p-1 text-base">⏮</button>
+    <button id="play-btn" data-action="play" title="Play / Pause (Space)" class="w-9 h-9 rounded-full bg-amber-500 hover:bg-amber-400 active:scale-95 text-zinc-950 flex items-center justify-center font-bold text-sm shadow-md transition">⏸</button>
+    <button id="next-btn" data-action="next" title="Next (Right Arrow)" class="hover:text-amber-400 active:scale-90 transition p-1 text-base">⏭</button>
+    <div class="h-4 w-px bg-zinc-700"></div>
+    <span id="slide-counter" class="text-xs font-mono font-medium text-zinc-300">Photo 0 / 0</span>
+    <div class="h-4 w-px bg-zinc-700"></div>
+    <button id="fullscreen-btn" data-action="fullscreen" title="Toggle Fullscreen (F)" class="hover:text-amber-400 active:scale-90 transition p-1 text-sm font-semibold">⛶</button>
+  </nav>
+
+  <script>
+    // State
+    let photos = [];
+    let currentIndex = 0;
+    let isPlaying = true;
+    let ws = null;
+    let reconnectTimer = null;
+    let rotationTimer = null;
+    let mouseTimer = null;
+
+    // DOM Elements
+    const emptyState = document.getElementById('empty-state');
+    const slideshowImage = document.getElementById('slideshow-image');
+    const hud = document.getElementById('controls-hud');
+    const prevBtn = document.getElementById('prev-btn');
+    const playBtn = document.getElementById('play-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const slideCounter = document.getElementById('slide-counter');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+    // Display image with smooth crossfade
+    function showPhoto(index) {
+      if (!photos || photos.length === 0) {
+        emptyState.classList.remove('hidden');
+        slideshowImage.classList.add('opacity-0');
+        slideshowImage.classList.remove('opacity-100');
+        slideshowImage.src = '';
+        slideCounter.textContent = 'Photo 0 / 0';
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      currentIndex = (index + photos.length) % photos.length;
+      const targetSrc = photos[currentIndex];
+
+      if (slideshowImage.src === targetSrc && slideshowImage.classList.contains('opacity-100')) {
+        updateControlsUI();
+        return;
+      }
+
+      // Smooth crossfade out, swap src, crossfade in
+      slideshowImage.classList.add('opacity-0');
+      slideshowImage.classList.remove('opacity-100');
+
+      setTimeout(() => {
+        slideshowImage.onload = function() {
+          slideshowImage.classList.remove('opacity-0');
+          slideshowImage.classList.add('opacity-100');
+        };
+        slideshowImage.src = targetSrc;
+        if (slideshowImage.complete) {
+          slideshowImage.classList.remove('opacity-0');
+          slideshowImage.classList.add('opacity-100');
+        }
+      }, 150);
+
+      updateControlsUI();
+    }
+
+    // Update counter and play/pause icon
+    function updateControlsUI() {
+      playBtn.textContent = isPlaying ? '⏸' : '▶';
+      if (photos.length > 0) {
+        slideCounter.textContent = 'Photo ' + (currentIndex + 1) + ' / ' + photos.length;
+      } else {
+        slideCounter.textContent = 'Photo 0 / 0';
+      }
+    }
+
+    // 5000ms loop timer logic
+    function resetTimer() {
+      if (rotationTimer) {
+        clearInterval(rotationTimer);
+        rotationTimer = null;
+      }
+      if (isPlaying && photos.length > 0) {
+        rotationTimer = setInterval(advancePhoto, 5000);
+      }
+    }
+
+    function advancePhoto() {
+      if (!isPlaying || photos.length === 0) return;
+      sendControl('next');
+    }
+
+    // Send control message over WebSocket with local fallback
+    function sendControl(action) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'control', action: action }));
+      } else {
+        if (action === 'play') isPlaying = true;
+        if (action === 'pause') isPlaying = false;
+        if (action === 'next' && photos.length > 0) showPhoto(currentIndex + 1);
+        if (action === 'prev' && photos.length > 0) showPhoto(currentIndex - 1);
+        updateControlsUI();
+        resetTimer();
+      }
+    }
+
+    // Fullscreen toggle logic
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.warn('Fullscreen error:', err);
+        });
+      } else {
+        document.exitFullscreen().catch(err => {
+          console.warn('Exit fullscreen error:', err);
+        });
+      }
+    }
+
+    document.addEventListener('fullscreenchange', () => {
+      fullscreenBtn.textContent = document.fullscreenElement ? '🗗' : '⛶';
+    });
+
+    // Auto-hiding HUD & cursor inactivity logic (3s)
+    function showHUD() {
+      document.body.classList.remove('cursor-none');
+      hud.classList.remove('opacity-0', 'pointer-events-none');
+      hud.classList.add('opacity-100');
+
+      if (mouseTimer) clearTimeout(mouseTimer);
+      mouseTimer = setTimeout(() => {
+        document.body.classList.add('cursor-none');
+        hud.classList.remove('opacity-100');
+        hud.classList.add('opacity-0', 'pointer-events-none');
+      }, 3000);
+    }
+
+    window.addEventListener('mousemove', showHUD);
+    window.addEventListener('touchstart', showHUD);
+
+    // Keyboard navigation shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        const nextAction = isPlaying ? 'pause' : 'play';
+        sendControl(nextAction);
+        showHUD();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        sendControl('prev');
+        showHUD();
+      } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault();
+        sendControl('next');
+        showHUD();
+      } else if (e.key === 'f' || e.key === 'F' || e.code === 'KeyF') {
+        e.preventDefault();
+        toggleFullscreen();
+        showHUD();
+      }
+    });
+
+    // HUD Button Click Listeners
+    prevBtn.addEventListener('click', () => {
+      sendControl('prev');
+      showHUD();
+    });
+
+    playBtn.addEventListener('click', () => {
+      const nextAction = isPlaying ? 'pause' : 'play';
+      sendControl(nextAction);
+      showHUD();
+    });
+
+    nextBtn.addEventListener('click', () => {
+      sendControl('next');
+      showHUD();
+    });
+
+    fullscreenBtn.addEventListener('click', () => {
+      toggleFullscreen();
+      showHUD();
+    });
+
+    // WebSocket Management & Auto-reconnect
+    function connectWS() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(protocol + '//' + location.host + '/ws');
+
+      ws.onmessage = function(event) {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'init') {
+            photos = msg.photos || [];
+            if (msg.state) {
+              isPlaying = typeof msg.state.isPlaying === 'boolean' ? msg.state.isPlaying : true;
+              currentIndex = msg.state.currentIndex || 0;
+            }
+            showPhoto(currentIndex);
+            resetTimer();
+          } else if (msg.type === 'state') {
+            isPlaying = msg.isPlaying;
+            currentIndex = msg.currentIndex;
+            showPhoto(currentIndex);
+            resetTimer();
+          } else if (msg.type === 'new_photo') {
+            if (msg.image) {
+              photos.push(msg.image);
+              if (photos.length > 50) photos.shift();
+            }
+            currentIndex = photos.length - 1;
+            showPhoto(currentIndex);
+            resetTimer();
+          }
+        } catch (e) {
+          console.error('Error parsing WS message in display:', e);
+        }
+      };
+
+      ws.onclose = function() {
+        reconnectTimer = setTimeout(connectWS, 2000);
+      };
+
+      ws.onerror = function() {
+        ws.close();
+      };
+    }
+
+    // Initial setup
+    showHUD();
+    connectWS();
+  </script>
+</body>
+</html>`;
 }
 
 if (import.meta.main) {

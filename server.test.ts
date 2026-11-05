@@ -89,6 +89,64 @@ describe("Live Photo Slideshow Server", () => {
     expect(text).toContain("slideshow");
   });
 
+  describe("Display Big Screen View (/display)", () => {
+    let displayHtml: string;
+
+    beforeAll(async () => {
+      const res = await fetch(`${httpUrl}/display`);
+      displayHtml = await res.text();
+    });
+
+    it("includes Tailwind CSS and fullscreen black layout container", () => {
+      expect(displayHtml).toContain("cdn.tailwindcss.com");
+      expect(displayHtml).toMatch(/bg-(?:black|\[#000000\])|#000000/i);
+      expect(displayHtml).toMatch(/w-screen|h-screen|h-full|inset-0|fixed|absolute/i);
+    });
+
+    it("includes empty state indicator when no photos have been uploaded", () => {
+      expect(displayHtml).toMatch(/waiting for photos/i);
+      expect(displayHtml).toMatch(/\/camera|scan qr code/i);
+      expect(displayHtml).toContain("animate-pulse");
+    });
+
+    it("includes image container with crossfade transition classes and object-contain", () => {
+      expect(displayHtml).toMatch(/transition-opacity/i);
+      expect(displayHtml).toMatch(/duration-700/i);
+      expect(displayHtml).toMatch(/object-contain/i);
+      expect(displayHtml).toMatch(/<img[^>]*id=["']slideshow-image["']/i);
+    });
+
+    it("implements keyboard navigation shortcuts for Space, ArrowLeft, ArrowRight, and Fullscreen F", () => {
+      expect(displayHtml).toMatch(/addEventListener\(['"]keydown['"]/i);
+      expect(displayHtml).toMatch(/Space|code === ['"]Space['"]|key === ['"] ['"]/i);
+      expect(displayHtml).toMatch(/ArrowLeft/i);
+      expect(displayHtml).toMatch(/ArrowRight/i);
+      expect(displayHtml).toMatch(/key === ['"]f['"]|key === ['"]F['"]|code === ['"]KeyF['"]/i);
+      expect(displayHtml).toMatch(/requestFullscreen/i);
+    });
+
+    it("includes 5000ms auto-rotation slideshow timer logic", () => {
+      expect(displayHtml).toContain("5000");
+      expect(displayHtml).toMatch(/setInterval|clearInterval/i);
+    });
+
+    it("includes auto-hiding hover HUD with playback buttons and slide counter", () => {
+      expect(displayHtml).toMatch(/id=["'](?:controls-)?hud["']/i);
+      expect(displayHtml).toMatch(/data-action=["']prev["']|id=["']prev-btn["']/i);
+      expect(displayHtml).toMatch(/data-action=["'](?:play|toggle)["']|id=["']play-btn["']/i);
+      expect(displayHtml).toMatch(/data-action=["']next["']|id=["']next-btn["']/i);
+      expect(displayHtml).toMatch(/id=["']fullscreen-btn["']|data-action=["']fullscreen["']/i);
+      expect(displayHtml).toMatch(/id=["']slide-counter["']|id=["']counter["']/i);
+      expect(displayHtml).toMatch(/3000|setTimeout/i);
+    });
+
+    it("synchronizes via WebSocket connection with control dispatches", () => {
+      expect(displayHtml).toContain("new_photo");
+      expect(displayHtml).toContain("control");
+      expect(displayHtml).toMatch(/reconnect|2000|setTimeout/i);
+    });
+  });
+
   it("handles WebSocket connections and initial state delivery", async () => {
     const ws = new WebSocket(wsUrl);
     const initMessage = await new Promise<any>((resolve, reject) => {
