@@ -1,0 +1,10 @@
+{
+  "name": "live-photo-slideshow",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun --watch server.ts",
+    "test": "bun test"
+  }
+}
