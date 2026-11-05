@@ -30,6 +30,58 @@ describe("Live Photo Slideshow Server", () => {
     expect(text).toContain("Take Photo");
   });
 
+  describe("Camera Mobile View (/camera)", () => {
+    let cameraHtml: string;
+
+    beforeAll(async () => {
+      const res = await fetch(`${httpUrl}/camera`);
+      cameraHtml = await res.text();
+    });
+
+    it("includes mobile viewport and Tailwind CSS", () => {
+      expect(cameraHtml).toContain("viewport-fit=cover");
+      expect(cameraHtml).toContain("cdn.tailwindcss.com");
+    });
+
+    it("has native file input with camera capture and accept image/*", () => {
+      expect(cameraHtml).toMatch(/<input[^>]*type=["']file["'][^>]*>/i);
+      expect(cameraHtml).toMatch(/capture=["']environment["']/i);
+      expect(cameraHtml).toMatch(/accept=["']image\/\*["']/i);
+    });
+
+    it("provides frame options for none, polaroid, filmstrip, and minimal", () => {
+      expect(cameraHtml).toContain('data-frame="none"');
+      expect(cameraHtml).toContain('data-frame="polaroid"');
+      expect(cameraHtml).toContain('data-frame="filmstrip"');
+      expect(cameraHtml).toContain('data-frame="minimal"');
+    });
+
+    it("includes canvas resizing logic with 1280px limit and 0.7 jpeg quality", () => {
+      expect(cameraHtml).toContain("1280");
+      expect(cameraHtml).toContain("image/jpeg");
+      expect(cameraHtml).toContain("0.7");
+    });
+
+    it("includes preview editor controls: Retake, Send to Big Screen, and Caption input", () => {
+      expect(cameraHtml).toContain("Send to Big Screen");
+      expect(cameraHtml).toContain("Retake");
+      expect(cameraHtml).toMatch(/id=["']caption-input["']|<input[^>]*placeholder=[^>]*caption/i);
+    });
+
+    it("includes bottom remote controls for play/pause, prev, next, and slide counter", () => {
+      expect(cameraHtml).toMatch(/id=["']prev-btn["']|data-action=["']prev["']/i);
+      expect(cameraHtml).toMatch(/id=["']play-btn["']|id=["']toggle-play-btn["']|data-action=["']play["']/i);
+      expect(cameraHtml).toMatch(/id=["']next-btn["']|data-action=["']next["']/i);
+      expect(cameraHtml).toMatch(/id=["']slide-counter["']|id=["']counter["']/i);
+    });
+
+    it("contains WebSocket auto-reconnect handling and control dispatches", () => {
+      expect(cameraHtml).toContain("upload");
+      expect(cameraHtml).toContain("control");
+      expect(cameraHtml).toMatch(/reconnect|2000|setTimeout/i);
+    });
+  });
+
   it("serves the display page on GET /display", async () => {
     const res = await fetch(`${httpUrl}/display`);
     expect(res.status).toBe(200);
