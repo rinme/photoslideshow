@@ -1,3 +1,5 @@
+import os from "node:os";
+
 export const MAX_PHOTOS = 50;
 
 export interface SlideshowState {
@@ -1352,7 +1354,30 @@ export function getDisplayHTML(): string {
 </html>`;
 }
 
+export function getLocalIPAddresses(): string[] {
+  const interfaces = os.networkInterfaces();
+  const addresses: string[] = [];
+  for (const name of Object.keys(interfaces)) {
+    const ifaceList = interfaces[name];
+    if (!ifaceList) continue;
+    for (const iface of ifaceList) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        addresses.push(iface.address);
+      }
+    }
+  }
+  return addresses;
+}
+
 if (import.meta.main) {
   const server = startServer();
-  console.log(`Slideshow server running at http://${server.hostname}:${server.port}`);
+  const localIPs = getLocalIPAddresses();
+  console.log(`\n🎉 Live Photo Slideshow Server running!`);
+  console.log(`  Local:   http://localhost:${server.port}`);
+  if (localIPs.length > 0) {
+    for (const ip of localIPs) {
+      console.log(`  Network: http://${ip}:${server.port}`);
+    }
+  }
+  console.log(`\n📱 Open /camera on your phone or /display on your projector/TV\n`);
 }
