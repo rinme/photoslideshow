@@ -64,7 +64,13 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
       message(ws, rawMessage) {
         try {
           const msg = JSON.parse(String(rawMessage));
-          if (msg.type === "upload" && typeof msg.image === "string") {
+          if (
+            msg.type === "upload" &&
+            typeof msg.image === "string" &&
+            msg.image.length > 0 &&
+            msg.image.length <= 5_000_000 &&
+            (!msg.image.startsWith("data:") || msg.image.startsWith("data:image/"))
+          ) {
             photoBuffer.push(msg.image);
             if (photoBuffer.length > MAX_PHOTOS) {
               photoBuffer.shift();
@@ -93,9 +99,10 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
             if (
               msg.action === "goto" &&
               typeof msg.index === "number" &&
+              Number.isFinite(msg.index) &&
               photoBuffer.length > 0
             ) {
-              state.currentIndex = Math.max(0, Math.min(msg.index, photoBuffer.length - 1));
+              state.currentIndex = Math.max(0, Math.min(Math.floor(msg.index), photoBuffer.length - 1));
             }
 
             server.publish(
@@ -1130,6 +1137,7 @@ export function getDisplayHTML(): string {
     let reconnectTimer = null;
     let rotationTimer = null;
     let mouseTimer = null;
+    let crossfadeTimeout = null;
 
     // DOM Elements
     const emptyState = document.getElementById('empty-state');
@@ -1143,6 +1151,11 @@ export function getDisplayHTML(): string {
 
     // Display image with smooth crossfade
     function showPhoto(index) {
+      if (crossfadeTimeout) {
+        clearTimeout(crossfadeTimeout);
+        crossfadeTimeout = null;
+      }
+
       if (!photos || photos.length === 0) {
         emptyState.classList.remove('hidden');
         slideshowImage.classList.add('opacity-0');
@@ -1165,7 +1178,7 @@ export function getDisplayHTML(): string {
       slideshowImage.classList.add('opacity-0');
       slideshowImage.classList.remove('opacity-100');
 
-      setTimeout(() => {
+      crossfadeTimeout = setTimeout(() => {
         slideshowImage.onload = function() {
           slideshowImage.classList.remove('opacity-0');
           slideshowImage.classList.add('opacity-100');

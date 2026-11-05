@@ -200,6 +200,11 @@ describe("Live Photo Slideshow Server", () => {
       expect(displayHtml).toContain("control");
       expect(displayHtml).toMatch(/reconnect|2000|setTimeout/i);
     });
+
+    it("includes crossfade timer cancellation to prevent race conditions", () => {
+      expect(displayHtml).toMatch(/crossfadeTimeout/i);
+      expect(displayHtml).toMatch(/clearTimeout\(crossfadeTimeout\)/i);
+    });
   });
 
   it("handles WebSocket connections and initial state delivery", async () => {
@@ -297,6 +302,79 @@ describe("Live Photo Slideshow Server", () => {
     expect(lastNewPhoto).toBeDefined();
     expect(lastNewPhoto.total).toBe(MAX_PHOTOS);
     expect(lastNewPhoto.index).toBe(MAX_PHOTOS - 1);
+
+    client.close();
+  });
+
+  it("verifies that goto with NaN or non-finite index does not corrupt state.currentIndex", async () => {
+    const client = new WebSocket(wsUrl);
+    await new Promise((res) => (client.onopen = res));
+    await new Promise<any>((res) => {
+      client.onmessage = (event) => res(JSON.parse(event.data));
+    }); // discard init
+
+    // Upload a photo so photoBuffer has length > 0
+    const uploadAck = new Promise<any>((res) => {
+      client.onmessage = (event) => res(JSON.parse(event.data));
+    });
+    client.send(JSON.stringify({ type: "upload", image: "data:image/jpeg;base64,sample-goto-test" }));
+    await uploadAck;
+
+    // Send goto with NaN (in JSON, NaN stringifies to null)
+    const statePromise1 = new Promise<any>((res) => {
+      client.onmessage = (event) => res(JSON.parse(event.data));
+    });
+    client.send(JSON.stringify({ type: "control", action: "goto", index: NaN }));
+    const state1 = await statePromise1;
+
+    expect(state1.type).toBe("state");
+    expect(typeof state1.currentIndex).toBe("number");
+    expect(Number.isFinite(state1.currentIndex)).toBe(true);
+    expect(Number.isNaN(state1.currentIndex)).toBe(false);
+
+    // Send goto with float (e.g. 0.8) and check Math.floor normalization
+    const statePromise2 = new Promise<any>((res) => {
+      client.onmessage = (event) => res(JSON.parse(event.data));
+    });
+    client.send(JSON.stringify({ type: "control", action: "goto", index: 0.8 }));
+    const state2 = await statePromise2;
+
+    expect(state2.type).toBe("state");
+    expect(state2.currentIndex).toBe(0);
+
+    client.close();
+  });
+
+  it("guards against excessively large upload payloads (>5MB) without crashing", async () => {
+    const client = new WebSocket(wsUrl);
+    await new Promise((res) => (client.onopen = res));
+    await new Promise((res) => (client.onmessage = res)); // init
+
+    let receivedNewPhoto = false;
+    client.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "new_photo") {
+        receivedNewPhoto = true;
+      }
+    };
+
+    // Send oversized payload (>5MB)
+    const oversized = "data:image/jpeg;base64," + "A".repeat(5_200_000);
+    client.send(JSON.stringify({ type: "upload", image: oversized }));
+
+    await new Promise((res) => setTimeout(res, 50));
+    expect(receivedNewPhoto).toBe(false);
+
+    // Send valid payload and verify server continues working properly
+    const validPhoto = "data:image/jpeg;base64,valid";
+    const validPromise = new Promise<any>((resolve) => {
+      client.onmessage = (event) => resolve(JSON.parse(event.data));
+    });
+    client.send(JSON.stringify({ type: "upload", image: validPhoto }));
+    const response = await validPromise;
+
+    expect(response.type).toBe("new_photo");
+    expect(response.image).toBe(validPhoto);
 
     client.close();
   });

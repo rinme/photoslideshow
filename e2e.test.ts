@@ -32,16 +32,18 @@ class TestClient {
       return this.messages.shift();
     }
     return new Promise((resolve, reject) => {
+      let waiter: (msg: any) => void;
       const timer = setTimeout(() => {
-        const idx = this.waiters.indexOf(resolve);
+        const idx = this.waiters.indexOf(waiter);
         if (idx !== -1) this.waiters.splice(idx, 1);
         reject(new Error(`Timed out waiting for message after ${timeoutMs}ms`));
       }, timeoutMs);
 
-      this.waiters.push((msg) => {
+      waiter = (msg: any) => {
         clearTimeout(timer);
         resolve(msg);
-      });
+      };
+      this.waiters.push(waiter);
     });
   }
 
@@ -292,5 +294,23 @@ describe("End-to-End Slideshow Multi-Client Simulation", () => {
       expect(ip).toMatch(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/);
       expect(ip.startsWith("127.")).toBe(false);
     }
+  });
+
+  it("cleans up waiters on timeout in TestClient", async () => {
+    const client = new TestClient(wsUrl);
+    await client.waitForOpen();
+    await client.nextMessage(); // consume init
+
+    let timedOut = false;
+    try {
+      await client.nextMessage(50);
+    } catch {
+      timedOut = true;
+    }
+    expect(timedOut).toBe(true);
+    // Verify internal waiters array has been pruned properly
+    expect((client as any).waiters.length).toBe(0);
+
+    client.close();
   });
 });
