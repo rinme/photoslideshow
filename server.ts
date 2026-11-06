@@ -1,4 +1,7 @@
 import os from "node:os";
+import { getScrapbookHTML } from "./scrapbook";
+
+export { getScrapbookHTML } from "./scrapbook";
 
 export const MAX_PHOTOS = 50;
 
@@ -41,6 +44,12 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
 
       if (url.pathname === "/display") {
         return new Response(getDisplayHTML(), {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+
+      if (url.pathname === "/scrapbook" || url.pathname === "/collage") {
+        return new Response(getScrapbookHTML(url.host), {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       }
@@ -471,7 +480,7 @@ export function getLandingHTML(host: string): string {
     </div>
 
     <!-- Quick-Launch Navigation Action Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto w-full">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto w-full">
       <!-- Camera Card -->
       <a href="/camera" class="group relative flex flex-col justify-between p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition duration-200 shadow-lg">
         <div class="flex items-start justify-between mb-4">
@@ -518,6 +527,31 @@ export function getLandingHTML(host: string): string {
             </svg>
           </h3>
           <p class="text-sm text-zinc-400 mt-1">Open fullscreen slideshow for projectors, monitors, and TV screens.</p>
+        </div>
+      </a>
+
+      <!-- Vintage Scrapbook Wall Card -->
+      <a href="/scrapbook" class="group relative flex flex-col justify-between p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-500/50 hover:bg-zinc-900 transition duration-200 shadow-lg">
+        <div class="flex items-start justify-between mb-4">
+          <div class="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center group-hover:scale-110 transition duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="9" cy="9" r="2"/>
+              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+            </svg>
+          </div>
+          <span class="text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-400 group-hover:text-amber-400 group-hover:bg-amber-500/10 transition">
+            Scrapbook
+          </span>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white group-hover:text-amber-400 transition flex items-center gap-1.5">
+            Scrapbook Wall
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </h3>
+          <p class="text-sm text-zinc-400 mt-1">Vintage polaroid collage view where photos are tossed live onto the table without covering each other.</p>
         </div>
       </a>
     </div>

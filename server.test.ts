@@ -1,5 +1,5 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test";
-import { startServer, MAX_PHOTOS, generateQRCodeSVG, getLandingHTML } from "./server";
+import { startServer, MAX_PHOTOS, generateQRCodeSVG, getLandingHTML, getScrapbookHTML } from "./server";
 
 describe("Live Photo Slideshow Server", () => {
   let server: ReturnType<typeof startServer>;
@@ -61,6 +61,12 @@ describe("Live Photo Slideshow Server", () => {
       expect(landingHtml).toMatch(/<a[^>]*href=["']\/display["'][^>]*>/i);
       expect(landingHtml).toMatch(/launch big screen|open big screen/i);
       expect(landingHtml).toMatch(/open fullscreen slideshow/i);
+    });
+
+    it("provides quick-launch action card for Scrapbook Wall (/scrapbook)", () => {
+      expect(landingHtml).toMatch(/<a[^>]*href=["']\/scrapbook["'][^>]*>/i);
+      expect(landingHtml).toContain("Scrapbook Wall");
+      expect(landingHtml).toMatch(/polaroid collage|without covering/i);
     });
 
     it("includes live status badge and WebSocket listener for real-time photo/connection status", () => {
@@ -204,6 +210,119 @@ describe("Live Photo Slideshow Server", () => {
     it("includes crossfade timer cancellation to prevent race conditions", () => {
       expect(displayHtml).toMatch(/crossfadeTimeout/i);
       expect(displayHtml).toMatch(/clearTimeout\(crossfadeTimeout\)/i);
+    });
+  });
+
+  it("serves the vintage scrapbook page on GET /scrapbook", async () => {
+    const res = await fetch(`${httpUrl}/scrapbook`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("Scrapbook Memories");
+  });
+
+  it("serves the vintage scrapbook page on GET /collage alias", async () => {
+    const res = await fetch(`${httpUrl}/collage`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("Scrapbook Memories");
+  });
+
+  describe("Scrapbook Vintage Polaroid Wall (/scrapbook)", () => {
+    let scrapbookHtml: string;
+
+    beforeAll(async () => {
+      const res = await fetch(`${httpUrl}/scrapbook`);
+      scrapbookHtml = await res.text();
+    });
+
+    it("includes Tailwind CSS, handwriting Google font (Caveat), and vintage serif (Playfair Display)", () => {
+      expect(scrapbookHtml).toContain("cdn.tailwindcss.com");
+      expect(scrapbookHtml).toContain("family=Caveat");
+      expect(scrapbookHtml).toContain("family=Playfair+Display");
+      expect(scrapbookHtml).toContain("font-handwriting");
+    });
+
+    it("renders textured scrapbook paper background with crease lines and Italian script watermark", () => {
+      expect(scrapbookHtml).toContain("crease-h");
+      expect(scrapbookHtml).toContain("crease-v");
+      expect(scrapbookHtml).toContain("di un terzo circa quanto");
+      expect(scrapbookHtml).toContain("AUSTRALIA");
+    });
+
+    it("includes botanical decorations: rose leaves with gold ribbon bow, pressed daisies, and dried wildflower sprig", () => {
+      // Golden Ribbon Bow & Leaves
+      expect(scrapbookHtml).toContain("Golden Silk Ribbon Bow");
+      expect(scrapbookHtml).toContain("#e5c158");
+      // Pressed Daisies
+      expect(scrapbookHtml).toContain("Daisy Petals");
+      expect(scrapbookHtml).toContain("Center Textured Seed Disk");
+      // Dried Pink Wildflower Branch
+      expect(scrapbookHtml).toContain("Dried Pink/Burgundy Blossoms");
+    });
+
+    it("includes torn kraft paper washi tape date banner matching reference", () => {
+      expect(scrapbookHtml).toContain("kraft-tape-banner");
+      expect(scrapbookHtml).toContain("Thursday, 30 December 2026");
+      expect(scrapbookHtml).toContain("date-display-text");
+    });
+
+    it("defines polaroid card structure with cardstock, white chin, and frosted washi/scotch tape classes", () => {
+      expect(scrapbookHtml).toContain("polaroid-card");
+      expect(scrapbookHtml).toContain("polaroid-photo-frame");
+      expect(scrapbookHtml).toContain("polaroid-chin");
+      expect(scrapbookHtml).toContain("polaroid-caption");
+      expect(scrapbookHtml).toContain("washi-tape-strip");
+      expect(scrapbookHtml).toContain("tape-top");
+      expect(scrapbookHtml).toContain("tape-corner-left");
+      expect(scrapbookHtml).toContain("tape-corner-right");
+    });
+
+    it("implements non-covering placement algorithm with collision detection and MAX_SINGLE_COVERAGE constraint", () => {
+      expect(scrapbookHtml).toContain("findNonCoveringPosition");
+      expect(scrapbookHtml).toContain("MAX_SINGLE_COVERAGE");
+      expect(scrapbookHtml).toContain("overlapArea");
+      expect(scrapbookHtml).toMatch(/coverage > MAX_SINGLE_COVERAGE|maxCoverage <= MAX_SINGLE_COVERAGE/);
+    });
+
+    it("implements throw physics trajectory, cubic-bezier easing, and Web Audio API synthesized sound", () => {
+      expect(scrapbookHtml).toContain("throwPhotoIntoScreen");
+      expect(scrapbookHtml).toContain("cubic-bezier(0.18, 0.89, 0.32, 1.15)");
+      expect(scrapbookHtml).toContain("AudioContext");
+      expect(scrapbookHtml).toContain("playTossSound");
+    });
+
+    it("implements interactive drag-and-drop and zoom lightbox modal", () => {
+      expect(scrapbookHtml).toContain("attachCardInteractions");
+      expect(scrapbookHtml).toContain("pointerdown");
+      expect(scrapbookHtml).toContain("pointermove");
+      expect(scrapbookHtml).toContain("pointerup");
+      expect(scrapbookHtml).toContain("is-dragging");
+      expect(scrapbookHtml).toContain("zoom-modal");
+      expect(scrapbookHtml).toContain("zoom-image");
+    });
+
+    it("provides floating HUD controls for Throw, Re-scatter, Clear, Sound, Fullscreen, and QR modal", () => {
+      expect(scrapbookHtml).toContain("hud-nav");
+      expect(scrapbookHtml).toContain("btn-throw-sample");
+      expect(scrapbookHtml).toContain("btn-rescatter");
+      expect(scrapbookHtml).toContain("btn-clear");
+      expect(scrapbookHtml).toContain("btn-sound");
+      expect(scrapbookHtml).toContain("btn-fullscreen");
+      expect(scrapbookHtml).toContain("btn-qr");
+      expect(scrapbookHtml).toContain("qr-modal");
+    });
+
+    it("connects to WebSocket for real-time photo streaming (init, new_photo)", () => {
+      expect(scrapbookHtml).toContain("connectWS");
+      expect(scrapbookHtml).toContain("/ws");
+      expect(scrapbookHtml).toContain("new_photo");
+      expect(scrapbookHtml).toContain("init");
+    });
+
+    it("generates standalone HTML via getScrapbookHTML helper with sanitized host link", () => {
+      const standalone = getScrapbookHTML("events.example.com:8080");
+      expect(standalone).toContain("events.example.com:8080/camera");
+      expect(standalone).toContain("Scrapbook Memories");
     });
   });
 

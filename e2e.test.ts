@@ -254,7 +254,7 @@ describe("End-to-End Slideshow Multi-Client Simulation", () => {
     bigScreen.close();
   });
 
-  it("verifies HTTP routes: landing page with camera QR link, camera page, display page, and 404 handler", async () => {
+  it("verifies HTTP routes: landing page with camera QR link, camera page, display page, scrapbook page, and 404 handler", async () => {
     // Landing page
     const landingRes = await fetch(`${httpUrl}/`);
     expect(landingRes.status).toBe(200);
@@ -262,6 +262,7 @@ describe("End-to-End Slideshow Multi-Client Simulation", () => {
     expect(landingHtml).toContain("Scan &amp; Stream Photos Live");
     expect(landingHtml).toContain("/camera");
     expect(landingHtml).toContain("/display");
+    expect(landingHtml).toContain("/scrapbook");
 
     // Camera page
     const cameraRes = await fetch(`${httpUrl}/camera`);
@@ -276,6 +277,14 @@ describe("End-to-End Slideshow Multi-Client Simulation", () => {
     const displayHtml = await displayRes.text();
     expect(displayHtml).toContain("Big Screen Display");
     expect(displayHtml).toContain("slideshow-image");
+
+    // Scrapbook page
+    const scrapbookRes = await fetch(`${httpUrl}/scrapbook`);
+    expect(scrapbookRes.status).toBe(200);
+    const scrapbookHtml = await scrapbookRes.text();
+    expect(scrapbookHtml).toContain("Scrapbook Memories");
+    expect(scrapbookHtml).toContain("polaroid-card");
+    expect(scrapbookHtml).toContain("Thursday, 30 December 2026");
 
     // Non-WebSocket upgrade request on /ws returns 400
     const wsFailRes = await fetch(`${httpUrl}/ws`);
