@@ -448,7 +448,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
   </div>
 
   <!-- MAIN PHOTO DESK CANVAS: Container where Polaroids are dynamically tossed -->
-  <main id="scrapbook-desk" class="absolute inset-0 w-full h-full overflow-hidden transition-all duration-300">
+  <main id="scrapbook-desk" class="absolute inset-0 w-full h-full overflow-hidden transition-all duration-300 z-10" style="isolation: isolate;">
     <!-- Dynamically thrown polaroid cards will be injected here -->
   </main>
 
@@ -513,8 +513,8 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
   </nav>
 
   <!-- MODAL: Confirmation for Clear Storage -->
-  <div id="clear-confirm-modal" class="fixed inset-0 bg-stone-950/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
-    <div class="polaroid-card p-6 max-w-sm w-full text-center relative rotate-0 shadow-2xl">
+  <div id="clear-confirm-modal" class="fixed inset-0 bg-stone-950/70 backdrop-blur-sm z-[9999] hidden items-center justify-center p-4" style="z-index: 9999;">
+    <div class="polaroid-card p-6 max-w-sm w-full text-center relative rotate-0 shadow-2xl" style="position: relative !important;">
       <div class="washi-tape-strip tape-top"></div>
       <div class="text-3xl mb-2">🗑️</div>
       <h3 class="font-serif-vintage text-xl font-bold text-stone-900 mb-1">Clear All Photo Storage?</h3>
@@ -533,8 +533,8 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
   </div>
 
   <!-- MODAL: QR Code & Camera Upload Link -->
-  <div id="qr-modal" class="fixed inset-0 bg-stone-950/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
-    <div class="polaroid-card p-6 max-w-xs w-full text-center relative rotate-0 shadow-2xl">
+  <div id="qr-modal" class="fixed inset-0 bg-stone-950/70 backdrop-blur-sm z-[9999] hidden items-center justify-center p-4" style="z-index: 9999;">
+    <div class="polaroid-card p-6 max-w-xs w-full text-center relative rotate-0 shadow-2xl" style="position: relative !important;">
       <button id="qr-close-btn" class="absolute top-3 right-3 text-stone-500 hover:text-stone-900 font-bold text-base p-1">&times;</button>
       <h3 class="font-serif-vintage text-lg font-bold text-stone-900 mb-1">Beam Photos from Phone</h3>
       <p class="font-handwriting text-base text-stone-600 mb-3">Snap pictures on your phone to toss them live onto this scrapbook!</p>
@@ -549,10 +549,10 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
   </div>
 
   <!-- MODAL: Polaroid Zoom / Inspection Lightbox with Prev / Next / Download -->
-  <div id="zoom-modal" class="fixed inset-0 bg-stone-950/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
-    <div class="relative max-w-xl w-full flex flex-col items-center">
+  <div id="zoom-modal" class="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-[9999] hidden items-center justify-center p-4" style="z-index: 9999;">
+    <div class="relative max-w-xl w-full flex flex-col items-center" style="z-index: 10000;">
       <!-- Lightbox Header / Close -->
-      <button id="zoom-close-btn" class="absolute -top-12 right-0 text-white/80 hover:text-white text-3xl font-bold p-1">&times;</button>
+      <button id="zoom-close-btn" class="absolute -top-12 right-0 text-white/80 hover:text-white text-3xl font-bold p-1 transition">&times;</button>
       
       <!-- Prev / Next Lightbox Chevrons -->
       <button id="btn-zoom-prev" title="Previous photo (Left Arrow)" class="absolute -left-4 sm:-left-12 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center text-xl font-bold transition">
@@ -563,7 +563,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
       </button>
 
       <!-- Enlarged Polaroid Frame -->
-      <div id="zoom-card" class="polaroid-card relative rotate-0 max-w-md w-full shadow-2xl p-4 sm:p-5 pointer-events-auto">
+      <div id="zoom-card" class="polaroid-card relative rotate-0 max-w-md w-full shadow-2xl p-4 sm:p-5 pointer-events-auto" style="position: relative !important; width: 100% !important; max-width: 480px; z-index: 10001; box-shadow: 0 25px 60px -10px rgba(0,0,0,0.6);">
         <div class="washi-tape-strip tape-top"></div>
         <div class="polaroid-photo-frame" style="aspect-ratio: auto; max-height: 65vh;">
           <img id="zoom-image" src="" alt="Enlarged Memory" class="w-full h-auto max-h-[65vh] object-contain" />
@@ -573,6 +573,10 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           <a id="btn-zoom-download" href="#" download="memory.jpg" class="text-xs font-sans px-3 py-1.5 rounded bg-stone-200 hover:bg-stone-300 text-stone-800 font-medium transition flex items-center gap-1">
             <span>⬇</span> Download
           </a>
+        </div>
+      </div>
+    </div>
+  </div>
         </div>
       </div>
     </div>
