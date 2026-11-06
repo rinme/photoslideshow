@@ -1,23 +1,121 @@
+import fs from "node:fs";
+import path from "node:path";
 import os from "node:os";
 import { getScrapbookHTML } from "./scrapbook";
 
 export { getScrapbookHTML } from "./scrapbook";
 
 export const MAX_PHOTOS = 50;
+export const PICTURES_DIR = path.resolve(process.cwd(), "pictures");
 
 export interface SlideshowState {
   isPlaying: boolean;
   currentIndex: number;
 }
 
-export function startServer(port: number = Number(process.env.PORT) || 3000) {
+export function startServer(
+  port: number = Number(process.env.PORT) || 3000,
+  picturesDir?: string
+) {
+  const targetDir = picturesDir || (port === 0
+    ? fs.mkdtempSync(path.join(os.tmpdir(), "pictures-test-"))
+    : PICTURES_DIR);
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
   const photoBuffer: string[] = [];
+  try {
+    const files = fs.readdirSync(targetDir);
+    const sortedFiles = files
+      .filter((f) => /\.(jpg|jpeg|png|webp|bin)$/i.test(f))
+      .map((f) => {
+        try {
+          const stats = fs.statSync(path.join(targetDir, f));
+          return { name: f, time: stats.mtimeMs };
+        } catch {
+          return { name: f, time: 0 };
+        }
+      })
+      .sort((a, b) => a.time - b.time);
+
+    for (const item of sortedFiles) {
+      photoBuffer.push(`/pictures/${item.name}`);
+      if (photoBuffer.length > MAX_PHOTOS) {
+        photoBuffer.shift();
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load existing pictures on startup:", e);
+  }
+
   const state: SlideshowState = {
     isPlaying: true,
-    currentIndex: 0,
+    currentIndex: photoBuffer.length > 0 ? photoBuffer.length - 1 : 0,
   };
 
   const TOPIC = "slideshow";
+
+  function savePhotoToDisk(imageData: string): string {
+    const id = Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+    let ext = "jpg";
+    if (imageData.startsWith("data:image/png")) ext = "png";
+    else if (imageData.startsWith("data:image/webp")) ext = "webp";
+    const filename = `photo_${id}.${ext}`;
+    const filePath = path.join(targetDir, filename);
+
+    try {
+      if (imageData.startsWith("data:")) {
+        const match = imageData.match(/^data:image\/[a-zA-Z+]+;base64,(.+)$/);
+        if (match && match[1]) {
+          fs.writeFileSync(filePath, Buffer.from(match[1], "base64"));
+        } else {
+          fs.writeFileSync(filePath, imageData);
+        }
+      } else {
+        fs.writeFileSync(filePath, imageData);
+      }
+    } catch (e) {
+      console.error("Failed to save picture to disk:", e);
+    }
+
+    return `/pictures/${filename}`;
+  }
+
+  function clearAllStorage(): number {
+    let removedCount = 0;
+    try {
+      if (fs.existsSync(targetDir)) {
+        const files = fs.readdirSync(targetDir);
+        for (const file of files) {
+          try {
+            fs.unlinkSync(path.join(targetDir, file));
+            removedCount++;
+          } catch (e) {}
+        }
+      }
+    } catch (e) {
+      console.error("Error clearing pictures directory:", e);
+    }
+
+    photoBuffer.length = 0;
+    state.currentIndex = 0;
+
+    server.publish(
+      TOPIC,
+      JSON.stringify({
+        type: "cleared",
+        total: 0,
+        state: {
+          ...state,
+          total: 0,
+        },
+      })
+    );
+
+    return removedCount;
+  }
 
   const server = Bun.serve({
     port,
@@ -28,6 +126,31 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
         const upgraded = server.upgrade(req);
         if (upgraded) return undefined;
         return new Response("WebSocket upgrade failed", { status: 400 });
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/clear") {
+        const cleared = clearAllStorage();
+        return new Response(JSON.stringify({ success: true, cleared }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (url.pathname.startsWith("/pictures/")) {
+        const filename = path.basename(url.pathname);
+        if (!filename || filename === "." || filename === ".." || filename.includes("/")) {
+          return new Response("Forbidden", { status: 403 });
+        }
+        const filePath = path.join(targetDir, filename);
+        if (!fs.existsSync(filePath)) {
+          return new Response("Not Found", { status: 404 });
+        }
+        const file = Bun.file(filePath);
+        return new Response(file, {
+          headers: {
+            "Content-Type": file.type || "image/jpeg",
+            "Cache-Control": "public, max-age=31536000, immutable",
+          },
+        });
       }
 
       if (url.pathname === "/") {
@@ -80,6 +203,7 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
             msg.image.length <= 5_000_000 &&
             (!msg.image.startsWith("data:") || msg.image.startsWith("data:image/"))
           ) {
+            const savedUrl = savePhotoToDisk(msg.image);
             photoBuffer.push(msg.image);
             if (photoBuffer.length > MAX_PHOTOS) {
               photoBuffer.shift();
@@ -91,10 +215,13 @@ export function startServer(port: number = Number(process.env.PORT) || 3000) {
               JSON.stringify({
                 type: "new_photo",
                 image: msg.image,
+                url: savedUrl,
                 index: state.currentIndex,
                 total: photoBuffer.length,
               })
             );
+          } else if (msg.type === "clear_storage") {
+            clearAllStorage();
           } else if (msg.type === "control") {
             if (msg.action === "play") state.isPlaying = true;
             if (msg.action === "pause") state.isPlaying = false;
@@ -597,6 +724,8 @@ export function getLandingHTML(host: string): string {
               updateCount(data.total);
             } else if (data.type === "state" && typeof data.total === "number") {
               updateCount(data.total);
+            } else if (data.type === "cleared") {
+              updateCount(0);
             }
           } catch (e) {
             console.error("WS message parse error:", e);
@@ -822,6 +951,8 @@ export function getCameraHTML(): string {
             updateControlsUI(msg.currentIndex, msg.total, isPlaying);
           } else if (msg.type === 'new_photo') {
             updateControlsUI(msg.index, msg.total, isPlaying);
+          } else if (msg.type === 'cleared') {
+            updateControlsUI(0, 0, isPlaying);
           }
         } catch (e) {
           console.error('Error handling WS message:', e);
@@ -1377,6 +1508,11 @@ export function getDisplayHTML(): string {
             }
             currentIndex = photos.length - 1;
             showPhoto(currentIndex);
+            resetTimer();
+          } else if (msg.type === 'cleared') {
+            photos = [];
+            currentIndex = 0;
+            showPhoto(0);
             resetTimer();
           }
         } catch (e) {

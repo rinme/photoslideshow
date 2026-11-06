@@ -324,6 +324,111 @@ describe("Live Photo Slideshow Server", () => {
       expect(standalone).toContain("events.example.com:8080/camera");
       expect(standalone).toContain("Scrapbook Memories");
     });
+
+    it("implements pagination with 6 photos per page limit, auto-page flip, and page controls", () => {
+      expect(scrapbookHtml).toContain("PHOTOS_PER_PAGE = 6");
+      expect(scrapbookHtml).toContain("btn-page-prev");
+      expect(scrapbookHtml).toContain("btn-page-next");
+      expect(scrapbookHtml).toContain("btn-side-prev");
+      expect(scrapbookHtml).toContain("btn-side-next");
+      expect(scrapbookHtml).toContain("page-display-text");
+      expect(scrapbookHtml).toContain("renderPage");
+    });
+
+    it("includes enlarged lightbox controls with Prev, Next, and Download buttons", () => {
+      expect(scrapbookHtml).toContain("btn-zoom-prev");
+      expect(scrapbookHtml).toContain("btn-zoom-next");
+      expect(scrapbookHtml).toContain("btn-zoom-download");
+      expect(scrapbookHtml).toContain("openZoomModalByIndex");
+    });
+
+    it("implements dual client-side IndexedDB caching store", () => {
+      expect(scrapbookHtml).toContain("LivePhotoScrapbookDB");
+      expect(scrapbookHtml).toContain("cachePhotoInDB");
+      expect(scrapbookHtml).toContain("clearDBCache");
+      expect(scrapbookHtml).toContain("indexedDB");
+    });
+
+    it("provides Clear Storage button and confirmation modal to purge server and cache", () => {
+      expect(scrapbookHtml).toContain("btn-clear-storage");
+      expect(scrapbookHtml).toContain("clear-confirm-modal");
+      expect(scrapbookHtml).toContain("btn-confirm-clear");
+      expect(scrapbookHtml).toContain("btn-cancel-clear");
+      expect(scrapbookHtml).toContain("/api/clear");
+    });
+  });
+
+  describe("Server Picture Storage & Clear API", () => {
+    it("serves images from /pictures/:filename with immutable cache headers", async () => {
+      // Upload a test photo first
+      const client = new WebSocket(wsUrl);
+      await new Promise((res) => (client.onopen = res));
+      await new Promise((res) => (client.onmessage = res)); // init
+
+      const newPhotoPromise = new Promise<any>((resolve) => {
+        client.onmessage = (event) => resolve(JSON.parse(event.data));
+      });
+
+      const sampleBase64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+      client.send(JSON.stringify({ type: "upload", image: sampleBase64 }));
+
+      const newPhoto = await newPhotoPromise;
+      expect(newPhoto.type).toBe("new_photo");
+      expect(newPhoto.url).toMatch(/^\/pictures\/photo_.*\.jpg$/);
+
+      // Fetch the saved photo via HTTP
+      const picRes = await fetch(`${httpUrl}${newPhoto.url}`);
+      expect(picRes.status).toBe(200);
+      expect(picRes.headers.get("Cache-Control")).toContain("immutable");
+      expect(picRes.headers.get("Cache-Control")).toContain("max-age=31536000");
+
+      client.close();
+    });
+
+    it("protects /pictures/:filename against directory traversal attacks", async () => {
+      const res1 = await fetch(`${httpUrl}/pictures/../server.ts`);
+      expect(res1.status === 403 || res1.status === 404).toBe(true);
+
+      const res2 = await fetch(`${httpUrl}/pictures/non-existent-photo-xyz.jpg`);
+      expect(res2.status).toBe(404);
+    });
+
+    it("clears storage via POST /api/clear and resets photo count", async () => {
+      const clearRes = await fetch(`${httpUrl}/api/clear`, { method: "POST" });
+      expect(clearRes.status).toBe(200);
+      const data = await clearRes.json();
+      expect(data.success).toBe(true);
+      expect(typeof data.cleared).toBe("number");
+    });
+
+    it("handles clear_storage WebSocket message and broadcasts cleared event to clients", async () => {
+      const clientA = new WebSocket(wsUrl);
+      const clientB = new WebSocket(wsUrl);
+
+      await Promise.all([
+        new Promise((res) => (clientA.onopen = res)),
+        new Promise((res) => (clientB.onopen = res)),
+      ]);
+
+      // Discard init
+      await Promise.all([
+        new Promise((res) => (clientA.onmessage = res)),
+        new Promise((res) => (clientB.onmessage = res)),
+      ]);
+
+      const clearedPromise = new Promise<any>((resolve) => {
+        clientB.onmessage = (event) => resolve(JSON.parse(event.data));
+      });
+
+      clientA.send(JSON.stringify({ type: "clear_storage" }));
+      const clearedMsg = await clearedPromise;
+
+      expect(clearedMsg.type).toBe("cleared");
+      expect(clearedMsg.total).toBe(0);
+
+      clientA.close();
+      clientB.close();
+    });
   });
 
   it("handles WebSocket connections and initial state delivery", async () => {

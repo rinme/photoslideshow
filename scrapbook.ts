@@ -204,10 +204,44 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
 
     /* Floating Toolbar HUD */
     .hud-pill {
-      background: rgba(248, 244, 236, 0.88);
-      backdrop-filter: blur(12px);
+      background: rgba(248, 244, 236, 0.92);
+      backdrop-filter: blur(14px);
       border: 1px solid rgba(180, 155, 125, 0.45);
       box-shadow: 0 14px 35px -5px rgba(50, 35, 20, 0.22), 0 4px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Side Page Chevrons */
+    .side-nav-btn {
+      background: rgba(248, 244, 236, 0.82);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(180, 155, 125, 0.4);
+      box-shadow: 0 8px 20px -3px rgba(50, 35, 20, 0.2);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .side-nav-btn:hover:not(:disabled) {
+      background: rgba(255, 252, 246, 0.98);
+      transform: translateY(-50%) scale(1.08);
+      border-color: rgba(160, 130, 95, 0.7);
+    }
+    .side-nav-btn:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+
+    /* Desk Page Turn Transition */
+    .page-turn-exit-left {
+      animation: pageTurnLeft 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    }
+    .page-turn-exit-right {
+      animation: pageTurnRight 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    }
+    @keyframes pageTurnLeft {
+      0% { transform: translateX(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateX(-110%) rotate(-4deg); opacity: 0; }
+    }
+    @keyframes pageTurnRight {
+      0% { transform: translateX(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateX(110%) rotate(4deg); opacity: 0; }
     }
   </style>
 </head>
@@ -379,6 +413,14 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
     </div>
   </header>
 
+  <!-- SIDE PAGE NAVIGATION CHEVRONS -->
+  <button id="btn-side-prev" title="Previous Page (Left Arrow)" class="side-nav-btn fixed left-3 sm:left-5 top-1/2 -translate-y-1/2 z-40 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-stone-700 hover:text-stone-950 text-xl sm:text-2xl shadow-lg transition">
+    ❮
+  </button>
+  <button id="btn-side-next" title="Next Page (Right Arrow)" class="side-nav-btn fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 z-40 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-stone-700 hover:text-stone-950 text-xl sm:text-2xl shadow-lg transition">
+    ❯
+  </button>
+
   <!-- EMPTY STATE NOTE: When no photos are present -->
   <div id="empty-state-card" class="absolute inset-0 flex items-center justify-center pointer-events-none z-20 transition-opacity duration-500 opacity-100">
     <div class="polaroid-card pointer-events-auto p-6 max-w-sm w-full mx-4 text-center transform rotate-[-2deg] shadow-2xl">
@@ -391,7 +433,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
       </div>
       <h3 class="font-serif-vintage text-xl font-bold text-stone-900 mb-1">Scrapbook Table Ready</h3>
       <p class="font-handwriting text-lg text-stone-700 mb-4 leading-snug">
-        Toss photos onto the table! Upload from phone or tap below to throw sample memories.
+        Toss photos onto the table! Holds 6 photos per page, flipping to Page 2 automatically when full.
       </p>
       
       <div class="flex flex-col gap-2.5">
@@ -406,28 +448,39 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
   </div>
 
   <!-- MAIN PHOTO DESK CANVAS: Container where Polaroids are dynamically tossed -->
-  <main id="scrapbook-desk" class="absolute inset-0 w-full h-full overflow-hidden">
+  <main id="scrapbook-desk" class="absolute inset-0 w-full h-full overflow-hidden transition-all duration-300">
     <!-- Dynamically thrown polaroid cards will be injected here -->
   </main>
 
   <!-- BOTTOM FLOATING HUD CONTROLS -->
-  <nav id="hud-nav" class="fixed bottom-5 inset-x-0 mx-auto w-fit z-50 hud-pill rounded-full px-4 sm:px-6 py-2 shadow-2xl flex items-center gap-2 sm:gap-3 text-stone-800 transition-all duration-300">
-    <button id="btn-throw-sample" title="Toss a new photo onto the board" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full hover:bg-amber-100/70 active:scale-95 text-xs font-medium text-stone-900 transition">
-      <span>📸</span>
-      <span class="hidden sm:inline font-sans">Throw Photo</span>
-    </button>
+  <nav id="hud-nav" class="fixed bottom-5 inset-x-0 mx-auto w-fit z-50 hud-pill rounded-full px-3 sm:px-5 py-2 shadow-2xl flex items-center gap-1.5 sm:gap-2.5 text-stone-800 transition-all duration-300">
+    <!-- Page Controller -->
+    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-stone-200/80 border border-stone-300 text-xs text-stone-900 shadow-sm">
+      <button id="btn-page-prev" title="Previous Page" class="px-1.5 py-0.5 rounded hover:bg-stone-300 active:scale-90 font-bold transition disabled:opacity-30 disabled:cursor-not-allowed">◀</button>
+      <span id="page-display-text" class="font-handwriting text-base font-bold min-w-[70px] text-center">Page 1 of 1</span>
+      <button id="btn-page-next" title="Next Page" class="px-1.5 py-0.5 rounded hover:bg-stone-300 active:scale-90 font-bold transition disabled:opacity-30 disabled:cursor-not-allowed">▶</button>
+    </div>
 
     <div class="h-4 w-px bg-stone-300"></div>
+
+    <button id="btn-throw-sample" title="Toss a new photo onto the board" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full hover:bg-amber-100/70 active:scale-95 text-xs font-medium text-stone-900 transition">
+      <span>📸</span>
+      <span class="hidden md:inline font-sans">Throw Photo</span>
+    </button>
 
     <button id="btn-rescatter" title="Re-throw and re-scatter all photos organically" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full hover:bg-amber-100/70 active:scale-95 text-xs font-medium text-stone-900 transition">
       <span>🔀</span>
-      <span class="hidden sm:inline font-sans">Re-scatter</span>
+      <span class="hidden md:inline font-sans">Re-scatter</span>
     </button>
 
     <div class="h-4 w-px bg-stone-300"></div>
 
-    <button id="btn-clear" title="Clear board" class="px-2 py-1.5 rounded-full hover:bg-amber-100/70 active:scale-95 text-xs font-medium text-stone-700 transition" aria-label="Clear Wall">
+    <button id="btn-clear" title="Clear current page board" class="px-2 py-1.5 rounded-full hover:bg-amber-100/70 active:scale-95 text-xs font-medium text-stone-700 transition" aria-label="Clear Wall">
       <span>🧹</span>
+    </button>
+
+    <button id="btn-clear-storage" title="Permanently Clear Stored Photos (/pictures)" class="px-2 py-1.5 rounded-full hover:bg-rose-100 active:scale-95 text-xs font-medium text-rose-700 transition" aria-label="Clear Storage">
+      <span>🗑️</span>
     </button>
 
     <button id="btn-sound" title="Toggle Sound (Whoosh &amp; Snap)" class="px-2 py-1.5 rounded-full hover:bg-amber-100/70 active:scale-95 text-xs font-medium text-stone-700 transition" aria-label="Toggle Sound">
@@ -459,6 +512,26 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
     </button>
   </nav>
 
+  <!-- MODAL: Confirmation for Clear Storage -->
+  <div id="clear-confirm-modal" class="fixed inset-0 bg-stone-950/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="polaroid-card p-6 max-w-sm w-full text-center relative rotate-0 shadow-2xl">
+      <div class="washi-tape-strip tape-top"></div>
+      <div class="text-3xl mb-2">🗑️</div>
+      <h3 class="font-serif-vintage text-xl font-bold text-stone-900 mb-1">Clear All Photo Storage?</h3>
+      <p class="font-handwriting text-lg text-stone-700 mb-4 leading-snug">
+        This will permanently delete all stored photos from the server (<span class="font-mono text-sm">/pictures</span>) and purge the browser cache.
+      </p>
+      <div class="flex gap-2">
+        <button id="btn-cancel-clear" class="flex-1 py-2 px-3 rounded border border-stone-300 text-stone-700 font-sans text-xs font-medium hover:bg-stone-100 active:scale-95 transition">
+          Cancel
+        </button>
+        <button id="btn-confirm-clear" class="flex-1 py-2 px-3 rounded bg-rose-600 hover:bg-rose-700 text-white font-sans text-xs font-semibold uppercase tracking-wider active:scale-95 transition shadow">
+          Yes, Delete All
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: QR Code & Camera Upload Link -->
   <div id="qr-modal" class="fixed inset-0 bg-stone-950/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
     <div class="polaroid-card p-6 max-w-xs w-full text-center relative rotate-0 shadow-2xl">
@@ -475,17 +548,31 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
     </div>
   </div>
 
-  <!-- MODAL: Polaroid Zoom / Inspection Lightbox -->
-  <div id="zoom-modal" class="fixed inset-0 bg-stone-950/75 backdrop-blur-md z-50 hidden items-center justify-center p-4">
-    <div class="relative max-w-lg w-full flex flex-col items-center">
-      <button id="zoom-close-btn" class="absolute -top-10 right-0 text-white/80 hover:text-white text-2xl font-bold p-2">&times;</button>
-      <div id="zoom-card" class="polaroid-card relative rotate-0 max-w-md w-full shadow-2xl p-4 sm:p-5">
+  <!-- MODAL: Polaroid Zoom / Inspection Lightbox with Prev / Next / Download -->
+  <div id="zoom-modal" class="fixed inset-0 bg-stone-950/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="relative max-w-xl w-full flex flex-col items-center">
+      <!-- Lightbox Header / Close -->
+      <button id="zoom-close-btn" class="absolute -top-12 right-0 text-white/80 hover:text-white text-3xl font-bold p-1">&times;</button>
+      
+      <!-- Prev / Next Lightbox Chevrons -->
+      <button id="btn-zoom-prev" title="Previous photo (Left Arrow)" class="absolute -left-4 sm:-left-12 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center text-xl font-bold transition">
+        ❮
+      </button>
+      <button id="btn-zoom-next" title="Next photo (Right Arrow)" class="absolute -right-4 sm:-right-12 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center text-xl font-bold transition">
+        ❯
+      </button>
+
+      <!-- Enlarged Polaroid Frame -->
+      <div id="zoom-card" class="polaroid-card relative rotate-0 max-w-md w-full shadow-2xl p-4 sm:p-5 pointer-events-auto">
         <div class="washi-tape-strip tape-top"></div>
         <div class="polaroid-photo-frame" style="aspect-ratio: auto; max-height: 65vh;">
           <img id="zoom-image" src="" alt="Enlarged Memory" class="w-full h-auto max-h-[65vh] object-contain" />
         </div>
-        <div class="mt-4 text-center">
-          <p id="zoom-caption" class="font-handwriting text-2xl text-stone-800 font-bold"></p>
+        <div class="mt-4 flex items-center justify-between px-2">
+          <p id="zoom-caption" class="font-handwriting text-2xl text-stone-800 font-bold truncate"></p>
+          <a id="btn-zoom-download" href="#" download="memory.jpg" class="text-xs font-sans px-3 py-1.5 rounded bg-stone-200 hover:bg-stone-300 text-stone-800 font-medium transition flex items-center gap-1">
+            <span>⬇</span> Download
+          </a>
         </div>
       </div>
     </div>
@@ -493,7 +580,53 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
 
   <script>
     (function() {
-      // Audio Synthesizer for realistic throw physics
+      // =========================================================================
+      // INDEXEDDB BROWSER CACHE
+      // =========================================================================
+      const DB_NAME = "LivePhotoScrapbookDB";
+      const DB_VERSION = 1;
+      const STORE_NAME = "photos";
+
+      function openDB() {
+        return new Promise((resolve, reject) => {
+          if (!window.indexedDB) {
+            resolve(null);
+            return;
+          }
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME, { keyPath: "id" });
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        });
+      }
+
+      async function cachePhotoInDB(id, dataOrUrl) {
+        try {
+          const db = await openDB();
+          if (!db) return;
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          store.put({ id: id, data: dataOrUrl, timestamp: Date.now() });
+        } catch(e) {}
+      }
+
+      async function clearDBCache() {
+        try {
+          const db = await openDB();
+          if (!db) return;
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          tx.objectStore(STORE_NAME).clear();
+        } catch(e) {}
+      }
+
+      // =========================================================================
+      // AUDIO SYNTHESIZER
+      // =========================================================================
       let soundEnabled = true;
       let audioCtx = null;
 
@@ -558,12 +691,10 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
               osc.stop(ctx.currentTime + 0.08);
             } catch(e) {}
           }, 480);
-        } catch (e) {
-          // Audio blocked until user interaction
-        }
+        } catch (e) {}
       }
 
-      // Sample Photos matching reference image (high-res with offline fallback)
+      // Sample Photos matching reference image
       const SAMPLE_MEMORIES = [
         {
           url: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80",
@@ -595,11 +726,19 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         }
       ];
 
-      // State
+      // =========================================================================
+      // STATE & PAGINATION (6 PHOTOS PER PAGE)
+      // =========================================================================
+      const PHOTOS_PER_PAGE = 6;
       let sampleIndex = 0;
       let highestZ = 30;
-      const placedCards = []; // { id, x, y, width, height, rotation, zIndex, el, src, caption }
-      let allPhotoSources = [];
+      let currentPage = 1;
+      let currentZoomIndex = 0;
+
+      // allPhotos contains all memories: { id, src, caption }
+      const allPhotos = [];
+      // placedCards tracks active DOM polaroids on the CURRENT page
+      const placedCards = [];
 
       // DOM Elements
       const desk = document.getElementById("scrapbook-desk");
@@ -608,6 +747,10 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
       const btnThrow = document.getElementById("btn-throw-sample");
       const btnRescatter = document.getElementById("btn-rescatter");
       const btnClear = document.getElementById("btn-clear");
+      const btnClearStorage = document.getElementById("btn-clear-storage");
+      const clearConfirmModal = document.getElementById("clear-confirm-modal");
+      const btnConfirmClear = document.getElementById("btn-confirm-clear");
+      const btnCancelClear = document.getElementById("btn-cancel-clear");
       const btnSound = document.getElementById("btn-sound");
       const soundIcon = document.getElementById("sound-icon");
       const btnFullscreen = document.getElementById("btn-fullscreen");
@@ -616,10 +759,23 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
       const qrCloseBtn = document.getElementById("qr-close-btn");
       const emptyThrowBtn = document.getElementById("empty-throw-btn");
       const emptyQrBtn = document.getElementById("empty-qr-btn");
+
+      // Zoom Modal Elements
       const zoomModal = document.getElementById("zoom-modal");
       const zoomImage = document.getElementById("zoom-image");
       const zoomCaption = document.getElementById("zoom-caption");
       const zoomCloseBtn = document.getElementById("zoom-close-btn");
+      const btnZoomPrev = document.getElementById("btn-zoom-prev");
+      const btnZoomNext = document.getElementById("btn-zoom-next");
+      const btnZoomDownload = document.getElementById("btn-zoom-download");
+
+      // Pagination Elements
+      const pageDisplayText = document.getElementById("page-display-text");
+      const btnPagePrev = document.getElementById("btn-page-prev");
+      const btnPageNext = document.getElementById("btn-page-next");
+      const btnSidePrev = document.getElementById("btn-side-prev");
+      const btnSideNext = document.getElementById("btn-side-next");
+
       const dateBanner = document.getElementById("date-banner");
       const dateDisplayText = document.getElementById("date-display-text");
 
@@ -637,8 +793,30 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         });
       }
 
+      function getTotalPages() {
+        return Math.max(1, Math.ceil(allPhotos.length / PHOTOS_PER_PAGE));
+      }
+
+      function updatePaginationUI() {
+        const total = getTotalPages();
+        if (currentPage > total) currentPage = total;
+        if (currentPage < 1) currentPage = 1;
+
+        if (pageDisplayText) {
+          pageDisplayText.textContent = "Page " + currentPage + " of " + total;
+        }
+
+        const isPrevDisabled = currentPage <= 1;
+        const isNextDisabled = currentPage >= total;
+
+        if (btnPagePrev) btnPagePrev.disabled = isPrevDisabled;
+        if (btnPageNext) btnPageNext.disabled = isNextDisabled;
+        if (btnSidePrev) btnSidePrev.disabled = isPrevDisabled;
+        if (btnSideNext) btnSideNext.disabled = isNextDisabled;
+      }
+
       function updateCounter() {
-        const count = placedCards.length;
+        const count = allPhotos.length;
         if (counterBadge) {
           counterBadge.textContent = count === 1 ? "1 photo" : count + " photos";
         }
@@ -651,12 +829,13 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
             emptyState.classList.add("opacity-100");
           }
         }
+        updatePaginationUI();
       }
 
       // =========================================================================
       // NON-COVERING PLACEMENT ALGORITHM
       // Rule: Every new photo is thrown on top (higher zIndex), BUT it must NOT
-      // cover all/majority of any existing picture!
+      // cover all/majority of any existing picture! (Max 38% single coverage)
       // =========================================================================
       function findNonCoveringPosition(cardWidth, cardHeight) {
         const deskRect = desk.getBoundingClientRect();
@@ -671,7 +850,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         const minY = 90;
         const maxY = Math.max(minY + 10, deskH - cardHeight - 65);
 
-        // If no existing photos, place near center with natural organic jitter
+        // If no existing photos on this page, place near center with organic jitter
         if (placedCards.length === 0) {
           return {
             x: minX + (maxX - minX) * 0.4 + (Math.random() - 0.5) * 60,
@@ -680,10 +859,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           };
         }
 
-        // HARD CONSTRAINT: Maximum allowed coverage of ANY existing photo
-        // 0.38 ensures that at least 62% of every existing photo remains completely uncovered!
         const MAX_SINGLE_COVERAGE = 0.38;
-
         const candidatePool = [];
 
         // 1. Grid of candidates across visible canvas
@@ -775,11 +951,9 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
 
           if (maxCoverage <= MAX_SINGLE_COVERAGE) {
             let score = 100;
-            // Reward cozy scrapbook overlap
             score += gentleOverlapCount * 40;
             if (coversCenter) score -= 35;
             score -= (totalOverlapArea / (cardWidth * cardHeight)) * 60;
-            // Keep in balanced frame
             const edgeDist = Math.min(cand.x - minX, maxX - cand.x, cand.y - minY, maxY - cand.y);
             score += Math.min(25, edgeDist * 0.15);
 
@@ -793,48 +967,41 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           const topCount = Math.min(3, validCandidates.length);
           chosen = validCandidates[Math.floor(Math.random() * topCount)];
         } else {
-          // If board is very crowded, choose candidate with lowest max coverage
           chosen = bestFallback || candidatePool[0];
         }
 
         return {
           x: chosen.x,
           y: chosen.y,
-          rotation: (Math.random() * 14) - 7 // Slight tilt: -7° to +7°
+          rotation: (Math.random() * 14) - 7
         };
       }
 
       // =========================================================================
-      // THROW PHOTO INTO SCREEN ANIMATION
+      // THROW PHOTO INTO CURRENT PAGE
       // =========================================================================
-      function throwPhotoIntoScreen(imgSrc, captionText) {
+      function throwPhotoIntoScreen(imgSrc, captionText, photoIndexInAll = -1) {
         if (!imgSrc) return;
 
-        // Card size (responsive)
         const isMobile = window.innerWidth <= 768;
         const cardWidth = isMobile ? 195 : 260;
         const cardHeight = isMobile ? 245 : 325;
 
-        // Calculate non-covering target
         const target = findNonCoveringPosition(cardWidth, cardHeight);
         const zIndex = ++highestZ;
 
-        // Random tape style: top, corner-left, or corner-right
         const tapeStyles = ["tape-top", "tape-corner-left", "tape-corner-right"];
         const selectedTape = tapeStyles[Math.floor(Math.random() * tapeStyles.length)];
 
-        // Create Card Element
         const card = document.createElement("div");
         card.className = "polaroid-card";
         card.style.zIndex = zIndex;
         card.style.width = cardWidth + "px";
 
-        // Tape
         const tape = document.createElement("div");
         tape.className = "washi-tape-strip " + selectedTape;
         card.appendChild(tape);
 
-        // Photo Frame & Img
         const frame = document.createElement("div");
         frame.className = "polaroid-photo-frame";
         const img = document.createElement("img");
@@ -843,18 +1010,18 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         frame.appendChild(img);
         card.appendChild(frame);
 
-        // Chin / Caption
         const chin = document.createElement("div");
         chin.className = "polaroid-chin";
         const cap = document.createElement("span");
         cap.className = "polaroid-caption";
-        cap.textContent = captionText || ("#" + (placedCards.length + 1));
+        const actualIdx = photoIndexInAll >= 0 ? photoIndexInAll + 1 : (allPhotos.length || 1);
+        cap.textContent = captionText || ("#" + actualIdx);
         chin.appendChild(cap);
         card.appendChild(chin);
 
-        // Setup Card Data Tracker
         const cardData = {
           id: "card-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+          photoIndex: photoIndexInAll >= 0 ? photoIndexInAll : allPhotos.length - 1,
           x: target.x,
           y: target.y,
           width: cardWidth,
@@ -866,16 +1033,11 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           caption: captionText || ""
         };
         placedCards.push(cardData);
-        updateCounter();
 
-        // ---------------------------------------------------------------------
-        // THROW PHYSICS TRAJECTORY SETUP
-        // ---------------------------------------------------------------------
         const deskRect = desk.getBoundingClientRect();
         const deskW = deskRect.width || window.innerWidth;
         const deskH = deskRect.height || window.innerHeight;
 
-        // Originates off-screen from random direction
         const directions = ["top", "bottom", "left", "right"];
         const dir = directions[Math.floor(Math.random() * directions.length)];
         let startX = target.x;
@@ -897,7 +1059,6 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
 
         const startRot = target.rotation + (Math.random() > 0.5 ? 42 : -42) + (Math.random() * 20 - 10);
 
-        // Set initial transform (offscreen, enlarged, heavy shadow)
         card.style.transform = "translate3d(" + startX + "px, " + startY + "px, 0) scale(1.65) rotate(" + startRot + "deg)";
         card.style.opacity = "0.2";
         card.style.boxShadow = "0 45px 80px rgba(35, 20, 10, 0.45)";
@@ -906,7 +1067,6 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         desk.appendChild(card);
         playTossSound();
 
-        // Trigger throw animation in next browser tick
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             card.style.opacity = "1";
@@ -915,12 +1075,69 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           });
         });
 
-        // Setup Drag & Click Handlers
         attachCardInteractions(card, cardData);
       }
 
       // =========================================================================
-      // DRAG & DROP AND CLICK TO INSPECT
+      // ADD PHOTO WITH AUTO-PAGE FLIP WHEN FULL (6 PHOTOS PER PAGE)
+      // =========================================================================
+      function addPhotoToScrapbook(imgSrc, captionText) {
+        const photoObj = {
+          id: "photo-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+          src: imgSrc,
+          caption: captionText || ("Photo #" + (allPhotos.length + 1))
+        };
+        allPhotos.push(photoObj);
+        cachePhotoInDB(photoObj.id, imgSrc);
+
+        const targetPage = Math.ceil(allPhotos.length / PHOTOS_PER_PAGE);
+
+        if (targetPage !== currentPage) {
+          // Page is full! Auto-turn to next page!
+          currentPage = targetPage;
+          renderPage(currentPage, true, () => {
+            // New photo is thrown onto the fresh page
+            throwPhotoIntoScreen(photoObj.src, photoObj.caption, allPhotos.length - 1);
+          });
+        } else {
+          // Still space on current page
+          throwPhotoIntoScreen(photoObj.src, photoObj.caption, allPhotos.length - 1);
+        }
+
+        updateCounter();
+      }
+
+      // =========================================================================
+      // RENDER SPECIFIC SCRAPBOOK PAGE
+      // =========================================================================
+      function renderPage(pageNum, isSlideAnimation = true, afterCallback = null) {
+        desk.innerHTML = "";
+        placedCards.length = 0;
+        currentPage = pageNum;
+        updatePaginationUI();
+
+        const startIndex = (pageNum - 1) * PHOTOS_PER_PAGE;
+        const pagePhotos = allPhotos.slice(startIndex, startIndex + PHOTOS_PER_PAGE);
+
+        if (pagePhotos.length === 0 && !afterCallback) {
+          updateCounter();
+          return;
+        }
+
+        // Stagger throw polaroids for this page
+        pagePhotos.forEach((item, idx) => {
+          setTimeout(() => {
+            throwPhotoIntoScreen(item.src, item.caption, startIndex + idx);
+          }, idx * 160);
+        });
+
+        if (afterCallback) {
+          setTimeout(afterCallback, pagePhotos.length * 160 + 100);
+        }
+      }
+
+      // =========================================================================
+      // DRAG & DROP AND CLICK TO ENLARGE LIGHTBOX
       // =========================================================================
       function attachCardInteractions(card, cardData) {
         let isPointerDown = false;
@@ -931,7 +1148,6 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         let hasMoved = false;
 
         card.addEventListener("pointerdown", (e) => {
-          // Ignore right clicks
           if (e.button !== 0) return;
           isPointerDown = true;
           hasMoved = false;
@@ -940,13 +1156,11 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           initialCardX = cardData.x;
           initialCardY = cardData.y;
 
-          // Lift card to highest zIndex
           cardData.zIndex = ++highestZ;
           card.style.zIndex = cardData.zIndex;
           card.classList.add("is-dragging");
           card.setPointerCapture(e.pointerId);
 
-          // Lift scale & shadow
           card.style.transition = "box-shadow 0.15s ease, filter 0.15s ease";
           card.style.transform = "translate3d(" + cardData.x + "px, " + cardData.y + "px, 0) scale(1.05) rotate(" + cardData.rotation + "deg)";
         });
@@ -956,7 +1170,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           const dx = e.clientX - startPointerX;
           const dy = e.clientY - startPointerY;
 
-          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+          if (Math.hypot(dx, dy) > 5) {
             hasMoved = true;
           }
 
@@ -976,28 +1190,40 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           card.style.transition = "transform 0.25s ease-out, box-shadow 0.25s ease-out";
           card.style.transform = "translate3d(" + cardData.x + "px, " + cardData.y + "px, 0) scale(1) rotate(" + cardData.rotation + "deg)";
 
-          // If was a click (not dragged), bring to front or open lightbox on double click
+          // SINGLE CLICK TO VIEW BIGGER SIZE
           if (!hasMoved) {
-            // Quick focus: gentle tilt punch
-            playTossSound();
+            openZoomModalByIndex(cardData.photoIndex);
           }
         };
 
         card.addEventListener("pointerup", handlePointerUp);
         card.addEventListener("pointercancel", handlePointerUp);
-
-        // Double click to inspect in zoom lightbox
-        card.addEventListener("dblclick", () => {
-          openZoomModal(cardData.src, cardData.caption);
-        });
       }
 
-      function openZoomModal(src, caption) {
-        if (!zoomModal || !zoomImage) return;
-        zoomImage.src = src;
-        if (zoomCaption) zoomCaption.textContent = caption || "";
-        zoomModal.classList.remove("hidden");
-        zoomModal.classList.add("flex");
+      // =========================================================================
+      // ENLARGED PICTURE LIGHTBOX MODAL WITH PREV / NEXT / DOWNLOAD
+      // =========================================================================
+      function openZoomModalByIndex(idx) {
+        if (allPhotos.length === 0) return;
+        currentZoomIndex = Math.max(0, Math.min(idx, allPhotos.length - 1));
+        const item = allPhotos[currentZoomIndex];
+
+        if (zoomImage) zoomImage.src = item.src;
+        if (zoomCaption) {
+          zoomCaption.textContent = (item.caption || "Memory") + " (" + (currentZoomIndex + 1) + "/" + allPhotos.length + ")";
+        }
+        if (btnZoomDownload) {
+          btnZoomDownload.href = item.src;
+          btnZoomDownload.download = "memory_" + (currentZoomIndex + 1) + ".jpg";
+        }
+
+        if (btnZoomPrev) btnZoomPrev.style.display = currentZoomIndex > 0 ? "flex" : "none";
+        if (btnZoomNext) btnZoomNext.style.display = currentZoomIndex < allPhotos.length - 1 ? "flex" : "none";
+
+        if (zoomModal) {
+          zoomModal.classList.remove("hidden");
+          zoomModal.classList.add("flex");
+        }
       }
 
       function closeZoomModal() {
@@ -1006,6 +1232,16 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         zoomModal.classList.remove("flex");
       }
 
+      if (btnZoomPrev) {
+        btnZoomPrev.addEventListener("click", () => {
+          if (currentZoomIndex > 0) openZoomModalByIndex(currentZoomIndex - 1);
+        });
+      }
+      if (btnZoomNext) {
+        btnZoomNext.addEventListener("click", () => {
+          if (currentZoomIndex < allPhotos.length - 1) openZoomModalByIndex(currentZoomIndex + 1);
+        });
+      }
       if (zoomCloseBtn) zoomCloseBtn.addEventListener("click", closeZoomModal);
       if (zoomModal) {
         zoomModal.addEventListener("click", (e) => {
@@ -1014,12 +1250,10 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
       }
 
       // =========================================================================
-      // RE-SCATTER / SHUFFLE ALL PHOTOS ORGANICALLY
+      // RE-SCATTER / SHUFFLE CURRENT PAGE
       // =========================================================================
       function rescatterAll() {
         if (placedCards.length === 0) return;
-
-        // Clear placed coordinates so they can recalculate fresh non-covering spots
         const currentCards = [...placedCards];
         placedCards.length = 0;
 
@@ -1042,19 +1276,77 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
       }
 
       // =========================================================================
-      // CONTROLS & EVENT LISTENERS
+      // PAGE NAVIGATION HANDLERS
       // =========================================================================
-      function throwNextSample() {
-        const sample = SAMPLE_MEMORIES[sampleIndex % SAMPLE_MEMORIES.length];
-        sampleIndex++;
-        throwPhotoIntoScreen(sample.url, sample.caption);
+      function goToPrevPage() {
+        if (currentPage > 1) {
+          renderPage(currentPage - 1, true);
+        }
       }
 
-      if (btnThrow) btnThrow.addEventListener("click", throwNextSample);
-      if (emptyThrowBtn) emptyThrowBtn.addEventListener("click", throwNextSample);
+      function goToNextPage() {
+        if (currentPage < getTotalPages()) {
+          renderPage(currentPage + 1, true);
+        }
+      }
 
-      if (btnRescatter) btnRescatter.addEventListener("click", rescatterAll);
+      if (btnPagePrev) btnPagePrev.addEventListener("click", goToPrevPage);
+      if (btnPageNext) btnPageNext.addEventListener("click", goToNextPage);
+      if (btnSidePrev) btnSidePrev.addEventListener("click", goToPrevPage);
+      if (btnSideNext) btnSideNext.addEventListener("click", goToNextPage);
 
+      // =========================================================================
+      // CLEAR STORAGE (DELETE SERVER PICTURES & BROWSER CACHE)
+      // =========================================================================
+      function openClearModal() {
+        if (clearConfirmModal) {
+          clearConfirmModal.classList.remove("hidden");
+          clearConfirmModal.classList.add("flex");
+        }
+      }
+
+      function closeClearModal() {
+        if (clearConfirmModal) {
+          clearConfirmModal.classList.add("hidden");
+          clearConfirmModal.classList.remove("flex");
+        }
+      }
+
+      async function executeClearStorage() {
+        closeClearModal();
+        try {
+          // 1. Call server API to delete files in /pictures
+          await fetch("/api/clear", { method: "POST" });
+
+          // 2. Send WS clear_storage
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "clear_storage" }));
+          }
+
+          // 3. Clear browser IndexedDB cache
+          await clearDBCache();
+
+          // 4. Reset local scrapbook state
+          allPhotos.length = 0;
+          placedCards.length = 0;
+          currentPage = 1;
+          desk.innerHTML = "";
+          updateCounter();
+        } catch (e) {
+          console.error("Failed to clear storage:", e);
+        }
+      }
+
+      if (btnClearStorage) btnClearStorage.addEventListener("click", openClearModal);
+      if (btnCancelClear) btnCancelClear.addEventListener("click", closeClearModal);
+      if (btnConfirmClear) btnConfirmClear.addEventListener("click", executeClearStorage);
+      if (clearConfirmModal) {
+        clearConfirmModal.addEventListener("click", (e) => {
+          if (e.target === clearConfirmModal) closeClearModal();
+        });
+      }
+
+      // Clear current desk view only
       if (btnClear) {
         btnClear.addEventListener("click", () => {
           desk.innerHTML = "";
@@ -1062,6 +1354,19 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
           updateCounter();
         });
       }
+
+      // =========================================================================
+      // OTHER CONTROLS & LISTENERS
+      // =========================================================================
+      function throwNextSample() {
+        const sample = SAMPLE_MEMORIES[sampleIndex % SAMPLE_MEMORIES.length];
+        sampleIndex++;
+        addPhotoToScrapbook(sample.url, sample.caption);
+      }
+
+      if (btnThrow) btnThrow.addEventListener("click", throwNextSample);
+      if (emptyThrowBtn) emptyThrowBtn.addEventListener("click", throwNextSample);
+      if (btnRescatter) btnRescatter.addEventListener("click", rescatterAll);
 
       if (btnSound) {
         btnSound.addEventListener("click", () => {
@@ -1111,6 +1416,26 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
             document.exitFullscreen().catch(() => {});
           }
         }
+        if (e.key === "ArrowLeft") {
+          if (zoomModal && !zoomModal.classList.contains("hidden")) {
+            if (currentZoomIndex > 0) openZoomModalByIndex(currentZoomIndex - 1);
+          } else {
+            goToPrevPage();
+          }
+        }
+        if (e.key === "ArrowRight") {
+          if (zoomModal && !zoomModal.classList.contains("hidden")) {
+            if (currentZoomIndex < allPhotos.length - 1) openZoomModalByIndex(currentZoomIndex + 1);
+          } else {
+            goToNextPage();
+          }
+        }
+        if (e.key === "[" || e.key === "PageUp") {
+          goToPrevPage();
+        }
+        if (e.key === "]" || e.key === "PageDown") {
+          goToNextPage();
+        }
         if (e.key === " " && !e.target.matches("input, textarea")) {
           e.preventDefault();
           throwNextSample();
@@ -1118,6 +1443,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         if (e.key === "Escape") {
           closeQr();
           closeZoomModal();
+          closeClearModal();
         }
       });
 
@@ -1144,28 +1470,42 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
 
             if (data.type === "init") {
               const serverPhotos = Array.isArray(data.photos) ? data.photos : [];
-              allPhotoSources = serverPhotos;
+              allPhotos.length = 0;
+              placedCards.length = 0;
 
               if (serverPhotos.length > 0) {
-                // Stagger throwing existing photos onto the board!
                 serverPhotos.forEach((imgSrc, idx) => {
-                  setTimeout(() => {
-                    throwPhotoIntoScreen(imgSrc, "#" + (idx + 1));
-                  }, idx * 280);
+                  allPhotos.push({
+                    id: "init-" + idx,
+                    src: imgSrc,
+                    caption: "Photo #" + (idx + 1)
+                  });
+                  cachePhotoInDB("init-" + idx, imgSrc);
                 });
+                currentPage = 1;
+                renderPage(1, false);
+                updateCounter();
               } else {
-                // If board has no photos yet on server, throw the first 2 sample photos
-                // so the user immediately gets a gorgeous scrapbook presentation!
+                // If brand-new server with no photos yet, toss 2 sample photos
                 setTimeout(() => {
-                  throwPhotoIntoScreen(SAMPLE_MEMORIES[0].url, SAMPLE_MEMORIES[0].caption);
+                  addPhotoToScrapbook(SAMPLE_MEMORIES[0].url, SAMPLE_MEMORIES[0].caption);
                   setTimeout(() => {
-                    throwPhotoIntoScreen(SAMPLE_MEMORIES[1].url, SAMPLE_MEMORIES[1].caption);
+                    addPhotoToScrapbook(SAMPLE_MEMORIES[1].url, SAMPLE_MEMORIES[1].caption);
                   }, 400);
                 }, 300);
               }
-            } else if (data.type === "new_photo" && data.image) {
+            } else if (data.type === "new_photo") {
               // Real-time photo uploaded from camera!
-              throwPhotoIntoScreen(data.image, "Live Photo #" + (data.total || placedCards.length + 1));
+              const imgSrc = data.url || data.image;
+              addPhotoToScrapbook(imgSrc, "Live Photo #" + (data.total || allPhotos.length + 1));
+            } else if (data.type === "cleared") {
+              // Storage was wiped
+              allPhotos.length = 0;
+              placedCards.length = 0;
+              currentPage = 1;
+              desk.innerHTML = "";
+              clearDBCache();
+              updateCounter();
             }
           } catch (e) {
             console.error("[Scrapbook] Failed to parse message:", e);
@@ -1181,7 +1521,7 @@ export function getScrapbookHTML(host: string = "localhost:3000"): string {
         };
       }
 
-      // Start WebSocket
+      // Start WebSocket & UI
       connectWS();
       updateCounter();
     })();
