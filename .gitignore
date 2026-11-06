@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Runtime uploaded pictures
+pictures/*
+!pictures/.gitkeep
+
+# System & OS
+.DS_Store
+Thumbs.db
+*.log
